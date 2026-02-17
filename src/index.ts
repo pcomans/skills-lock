@@ -3,7 +3,6 @@ export type {
   Lockfile,
   ResolvedSkill,
   InstalledSkill,
-  CheckResult,
   LockfileDiff,
   ResolveOptions,
 } from "./types.js";

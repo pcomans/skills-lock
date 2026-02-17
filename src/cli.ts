@@ -111,13 +111,15 @@ program
     const resolvedSource = expandSource(source);
     console.log(`Resolving ${skillName} from ${source}...`);
     const repoDir = await resolveRepo(source);
-    const ref = await resolveRef(repoDir);
-    const skills = await findSkills(repoDir, resolvedSource);
-    const matched = skills.find((s) => s.name === skillName);
-    const skillPath = matched?.path ?? skillName;
-
-    console.log(`Installing ${skillName} at ${ref.slice(0, 7)}...`);
+    let ref: string;
+    let skillPath: string;
     try {
+      ref = await resolveRef(repoDir);
+      const skills = await findSkills(repoDir, resolvedSource);
+      const matched = skills.find((s) => s.name === skillName);
+      skillPath = matched?.path ?? skillName;
+
+      console.log(`Installing ${skillName} at ${ref.slice(0, 7)}...`);
       await installSkill(repoDir, skillName);
     } finally {
       await cleanupClone(repoDir);
@@ -172,8 +174,12 @@ program
       console.log(`Checking ${name}...`);
 
       const repoDir = await resolveRepo(entry.source);
-      const latestRef = await resolveRef(repoDir);
-      await cleanupClone(repoDir);
+      let latestRef: string;
+      try {
+        latestRef = await resolveRef(repoDir);
+      } finally {
+        await cleanupClone(repoDir);
+      }
 
       if (latestRef === entry.ref) {
         console.log(`  ${name} — already up to date`);

@@ -45,20 +45,6 @@ export interface InstalledSkill {
 }
 
 /**
- * Result of comparing installed skills against the lockfile.
- */
-export interface CheckResult {
-  /** Skills in lockfile but not installed */
-  missing: string[];
-  /** Skills installed but not in lockfile */
-  extra: string[];
-  /** Skills where installed ref differs from lockfile ref */
-  outdated: string[];
-  /** Skills that match the lockfile */
-  synced: string[];
-}
-
-/**
  * Diff between two lockfile states.
  */
 export interface LockfileDiff {
