@@ -120,6 +120,21 @@ describe("installSkill", () => {
       { stdio: "inherit" }
     );
   });
+
+  // Safety contract: skills-lock must never delete the caller's local directory.
+  // cleanupClone() is only called on temp clones created by cloneAtRef().
+  // Without a ref, no clone is created and nothing is cleaned up.
+  it("never calls cleanupClone when no ref is provided (local path is never deleted)", async () => {
+    await installSkill("/home/user/my-local-skills", "review");
+    expect(mockedCleanupClone).not.toHaveBeenCalled();
+    expect(mockedCloneAtRef).not.toHaveBeenCalled();
+  });
+
+  it("never calls cleanupClone when no ref + skillPath (subdirectory of local path is never deleted)", async () => {
+    await installSkill("/home/user/my-local-skills", "review", undefined, "tools/review");
+    expect(mockedCleanupClone).not.toHaveBeenCalled();
+    expect(mockedCloneAtRef).not.toHaveBeenCalled();
+  });
 });
 
 describe("removeSkill", () => {
@@ -131,5 +146,59 @@ describe("removeSkill", () => {
       ["skills", "remove", "--skill", "pdf", "--yes"],
       { stdio: "inherit" }
     );
+  });
+});
+
+// Passthrough contract tests: verify the exact argument structure passed to npx skills,
+// covering the behavioral contracts that mirror vercel/skills' own test expectations.
+describe("installSkill passthrough contracts", () => {
+  // --yes contract: vercel/skills prompts for agent selection and confirmation.
+  // skills-lock must always pass --yes to suppress interactive prompts.
+  it("always passes --yes to suppress interactive prompts", async () => {
+    await installSkill("anthropics/skills", "pdf");
+    const args = mockedExeca.mock.calls[0][1] as string[];
+    expect(args).toContain("--yes");
+  });
+
+  // --skill contract: skills-lock always targets a specific skill by name.
+  // Without --skill, npx skills add would install ALL skills from the source.
+  it("always passes --skill <name> to target a specific skill", async () => {
+    await installSkill("anthropics/skills", "my-skill");
+    const args = mockedExeca.mock.calls[0][1] as string[];
+    expect(args).toContain("--skill");
+    expect(args[args.indexOf("--skill") + 1]).toBe("my-skill");
+  });
+
+  // Project-level contract: skills-lock manages project-level reproducibility.
+  // It never passes --global / -g so installs always go to .agents/skills/ in cwd.
+  it("never passes --global or -g (installs are always project-level)", async () => {
+    await installSkill("anthropics/skills", "pdf");
+    const args = mockedExeca.mock.calls[0][1] as string[];
+    expect(args).not.toContain("--global");
+    expect(args).not.toContain("-g");
+  });
+
+  // Skill name matching contract: skills-lock passes the skill name as-is to
+  // npx skills add --skill. vercel/skills performs case-insensitive matching
+  // internally, so the name passed here is the exact user-specified name from --skill.
+  it("passes the skill name exactly as provided (vercel/skills handles case normalization)", async () => {
+    await installSkill("anthropics/skills", "My-Skill");
+    const args = mockedExeca.mock.calls[0][1] as string[];
+    expect(args[args.indexOf("--skill") + 1]).toBe("My-Skill");
+  });
+});
+
+describe("removeSkill passthrough contracts", () => {
+  it("always passes --yes to suppress interactive prompts", async () => {
+    await removeSkill("pdf");
+    const args = mockedExeca.mock.calls[0][1] as string[];
+    expect(args).toContain("--yes");
+  });
+
+  it("always passes --skill <name> to target a specific skill", async () => {
+    await removeSkill("my-skill");
+    const args = mockedExeca.mock.calls[0][1] as string[];
+    expect(args).toContain("--skill");
+    expect(args[args.indexOf("--skill") + 1]).toBe("my-skill");
   });
 });

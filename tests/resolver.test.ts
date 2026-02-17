@@ -63,6 +63,94 @@ describe("expandSource", () => {
   });
 });
 
+describe("expandSource - GitHub HTTPS URLs", () => {
+  it("adds .git suffix to bare GitHub URL (no .git)", () => {
+    expect(expandSource("https://github.com/anthropics/skills")).toBe(
+      "https://github.com/anthropics/skills.git"
+    );
+  });
+
+  it("is idempotent when .git is already present", () => {
+    expect(expandSource("https://github.com/anthropics/skills.git")).toBe(
+      "https://github.com/anthropics/skills.git"
+    );
+  });
+
+  it("strips /tree/<branch> to produce a cloneable URL", () => {
+    expect(expandSource("https://github.com/owner/repo/tree/main")).toBe(
+      "https://github.com/owner/repo.git"
+    );
+  });
+
+  it("strips /tree/<branch>/<path> — pasted GitHub URLs work directly", () => {
+    expect(expandSource("https://github.com/owner/repo/tree/main/skills/my-skill")).toBe(
+      "https://github.com/owner/repo.git"
+    );
+  });
+
+  it("strips /tree/<feature-branch>/<nested-path>", () => {
+    expect(expandSource("https://github.com/org/repo/tree/feature-branch/a/b/c")).toBe(
+      "https://github.com/org/repo.git"
+    );
+  });
+});
+
+describe("expandSource - GitLab HTTPS URLs", () => {
+  it("adds .git suffix to bare GitLab URL", () => {
+    expect(expandSource("https://gitlab.com/owner/repo")).toBe(
+      "https://gitlab.com/owner/repo.git"
+    );
+  });
+
+  it("is idempotent when .git is already present", () => {
+    expect(expandSource("https://gitlab.com/owner/repo.git")).toBe(
+      "https://gitlab.com/owner/repo.git"
+    );
+  });
+
+  it("strips /-/tree/<branch> to produce a cloneable URL", () => {
+    expect(expandSource("https://gitlab.com/owner/repo/-/tree/develop")).toBe(
+      "https://gitlab.com/owner/repo.git"
+    );
+  });
+
+  it("strips /-/tree/<branch>/<path>", () => {
+    expect(expandSource("https://gitlab.com/owner/repo/-/tree/main/src/skills")).toBe(
+      "https://gitlab.com/owner/repo.git"
+    );
+  });
+
+  it("handles GitLab subgroup repos (2 levels deep)", () => {
+    expect(expandSource("https://gitlab.com/group/subgroup/repo")).toBe(
+      "https://gitlab.com/group/subgroup/repo.git"
+    );
+  });
+
+  it("strips tree URL from GitLab subgroup repo", () => {
+    expect(expandSource("https://gitlab.com/group/subgroup/repo/-/tree/main")).toBe(
+      "https://gitlab.com/group/subgroup/repo.git"
+    );
+  });
+
+  it("strips tree URL with path from GitLab subgroup repo", () => {
+    expect(expandSource("https://gitlab.com/group/subgroup/repo/-/tree/main/skills/foo")).toBe(
+      "https://gitlab.com/group/subgroup/repo.git"
+    );
+  });
+});
+
+describe("expandSource - non-GitHub/GitLab HTTPS pass-through", () => {
+  it("passes through arbitrary HTTPS git URLs unchanged", () => {
+    const url = "http://example.com/repo.git";
+    expect(expandSource(url)).toBe(url);
+  });
+
+  it("passes through self-hosted git HTTPS URLs unchanged", () => {
+    const url = "https://git.internal.example.com/team/skills.git";
+    expect(expandSource(url)).toBe(url);
+  });
+});
+
 describe("resolveRef", () => {
   let repoDir: string;
 
@@ -264,5 +352,68 @@ describe("findSkills", () => {
     expect(skills).toHaveLength(1);
     expect(skills[0].name).toBe("pdf");
     expect(skills[0].path).toBe("document-skills/pdf");
+  });
+
+  // Cross-platform path contract: paths stored in the lockfile must always use
+  // forward slashes so skills.lock is portable across operating systems.
+  it("normalizes nested skill paths to forward slashes for lockfile portability", async () => {
+    const git = simpleGit(repoDir);
+
+    await mkdir(join(repoDir, "a", "b", "c"), { recursive: true });
+    await writeFile(join(repoDir, "a", "b", "c", "SKILL.md"), "# Deep\n");
+
+    await git.add(".");
+    await git.commit("add deep skill");
+
+    const skills = await findSkills(repoDir, "test/repo");
+    expect(skills).toHaveLength(1);
+    expect(skills[0].path).toBe("a/b/c");
+    expect(skills[0].path).not.toContain("\\");
+  });
+
+  // Full-depth discovery contract: skills-lock always finds ALL SKILL.md files,
+  // unlike vercel/skills which stops at a root SKILL.md by default (fullDepth: false).
+  // This is intentional — users choose which specific skill to pin via --skill <name>.
+  it("finds all skills in a repo with both root and nested SKILL.md files (full-depth)", async () => {
+    const git = simpleGit(repoDir);
+
+    await writeFile(join(repoDir, "SKILL.md"), "# Root\n");
+    await mkdir(join(repoDir, "pdf"), { recursive: true });
+    await writeFile(join(repoDir, "pdf", "SKILL.md"), "# PDF\n");
+    await mkdir(join(repoDir, "review"), { recursive: true });
+    await writeFile(join(repoDir, "review", "SKILL.md"), "# Review\n");
+
+    await git.add(".");
+    await git.commit("add mixed skills");
+
+    const skills = await findSkills(repoDir, "test/repo");
+    expect(skills).toHaveLength(3);
+    const paths = skills.map((s) => s.path).sort();
+    expect(paths).toEqual([".", "pdf", "review"]);
+  });
+
+  // Plugin manifest contract: repos that use .claude-plugin/marketplace.json or
+  // plugin.json for plugin discovery are still usable with skills-lock — their
+  // skills are found by recursive SKILL.md search, not by manifest parsing.
+  it("finds skills in repos that use plugin manifests by their SKILL.md files", async () => {
+    const git = simpleGit(repoDir);
+
+    // Simulate a repo with a plugin manifest AND actual SKILL.md files
+    await mkdir(join(repoDir, ".claude-plugin"), { recursive: true });
+    await writeFile(
+      join(repoDir, ".claude-plugin", "marketplace.json"),
+      JSON.stringify({ plugins: [{ name: "my-plugin", source: "./plugins/my-plugin", skills: ["./skills/pdf"] }] })
+    );
+    await mkdir(join(repoDir, "plugins", "my-plugin", "skills", "pdf"), { recursive: true });
+    await writeFile(join(repoDir, "plugins", "my-plugin", "skills", "pdf", "SKILL.md"), "# PDF\n");
+
+    await git.add(".");
+    await git.commit("add plugin-manifest repo");
+
+    // skills-lock finds the SKILL.md by recursion — manifests are not parsed
+    const skills = await findSkills(repoDir, "test/repo");
+    expect(skills).toHaveLength(1);
+    expect(skills[0].name).toBe("pdf");
+    expect(skills[0].path).toBe("plugins/my-plugin/skills/pdf");
   });
 });

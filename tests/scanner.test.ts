@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
-import { mkdtemp, mkdir, writeFile, rm } from "node:fs/promises";
+import { mkdtemp, mkdir, writeFile, rm, symlink } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { scanInstalledSkills } from "../src/scanner.js";
@@ -96,5 +96,43 @@ describe("scanInstalledSkills", () => {
 
     const result = await scanInstalledSkills();
     expect(result).toEqual([]);
+  });
+
+  // Symlink contract: npx skills installs skills via symlinks from agent-specific dirs
+  // (.claude/skills, .cursor/skills, etc.) to the canonical .agents/skills/ location.
+  // scanner.ts uses stat() (which resolves symlinks) rather than lstat(), so a skill
+  // directory that is a symlink to a real directory is correctly found.
+  it("follows symlinks to skill directories (stat resolves, lstat would not)", async () => {
+    const realSkillDir = join(tmpDir, "real-skill-source");
+    await mkdir(realSkillDir, { recursive: true });
+    await writeFile(join(realSkillDir, "SKILL.md"), "# Real Skill");
+
+    await mkdir(join(tmpDir, ".agents/skills"), { recursive: true });
+    await symlink(realSkillDir, join(tmpDir, ".agents/skills/my-skill"));
+
+    const result = await scanInstalledSkills();
+    expect(result).toHaveLength(1);
+    expect(result[0].name).toBe("my-skill");
+    expect(result[0].hasSkillMd).toBe(true);
+  });
+
+  it("skips broken symlinks gracefully (stat throws, entry is silently skipped)", async () => {
+    await mkdir(join(tmpDir, ".agents/skills"), { recursive: true });
+    // Symlink whose target does not exist — stat() throws, scan continues
+    await symlink("/nonexistent/target/path", join(tmpDir, ".agents/skills/broken-skill"));
+
+    const result = await scanInstalledSkills();
+    expect(result).toEqual([]);
+  });
+
+  // XDG config paths contract: npx skills installs global skills to ~/.config/agents/skills
+  // (OpenCode, Amp, Goose) or ~/.cursor/skills, etc. skills-lock's scanInstalledSkills
+  // only scans project-level dirs (.agents/skills, .claude/skills). Global skills are
+  // intentionally out of scope — skills-lock manages project-level reproducibility.
+  it("only scans project-level dirs — global XDG paths are out of scope", async () => {
+    // Verify that skills in neither .agents/skills nor .claude/skills are not found
+    // (there is nothing to mock here — this is a documentation test for the contract)
+    const result = await scanInstalledSkills();
+    expect(result).toEqual([]); // no project-level skills installed
   });
 });
