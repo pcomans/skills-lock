@@ -1,7 +1,7 @@
 import { simpleGit } from "simple-git";
 import { mkdtemp, readdir, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { basename, join, relative, sep } from "node:path";
 import type { ResolvedSkill, ResolveOptions } from "./types.js";
 
 /**
@@ -99,8 +99,9 @@ async function findSkillMdFiles(
       results.push(...(await findSkillMdFiles(fullPath, base)));
     } else if (entry.isFile() && entry.name === "SKILL.md") {
       // Return the path relative to base, without the SKILL.md filename
-      const relative = dir.slice(base.length + 1);
-      results.push(relative || ".");
+      const relativePath = relative(base, dir);
+      const normalized = relativePath === "" ? "." : relativePath.split(sep).join("/");
+      results.push(normalized);
     }
   }
 
@@ -118,7 +119,7 @@ export async function findSkills(
   const ref = await resolveRef(repoDir);
 
   return skillPaths.map((path) => {
-    const name = path.split("/").pop() || path;
+    const name = basename(path);
     return { name, source, path, ref };
   });
 }

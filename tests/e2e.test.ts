@@ -8,13 +8,13 @@
  * Run with: RUN_E2E=1 npx vitest run tests/e2e.test.ts
  */
 import { describe, it, expect, beforeEach, afterEach, beforeAll } from "vitest";
-import { mkdtemp, access, readdir, readFile, rm, lstat } from "node:fs/promises";
+import { mkdtemp, access, readFile, rm, lstat } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { execa } from "execa";
 import { readLockfile, writeLockfile } from "../src/lockfile.js";
 import { scanInstalledSkills } from "../src/scanner.js";
 import { installSkill, removeSkill } from "../src/installer.js";
+import { cleanupClone, resolveRef, resolveRepo } from "../src/resolver.js";
 import type { Lockfile } from "../src/types.js";
 
 const RUN_E2E = process.env.RUN_E2E === "1";
@@ -144,14 +144,22 @@ describe.skipIf(!RUN_E2E)("e2e: real marketplace install/uninstall", () => {
         expect(found, `Scanner should find ${marketplace.skill}`).toBeDefined();
         expect(found!.hasSkillMd).toBe(true);
 
-        // --- Lockfile round-trip ---
+        // --- Lockfile round-trip (with a real ref) ---
+        const refRepoDir = await resolveRepo(marketplace.name);
+        let pinnedRef: string;
+        try {
+          pinnedRef = await resolveRef(refRepoDir);
+        } finally {
+          await cleanupClone(refRepoDir);
+        }
+
         const lockfile: Lockfile = {
           version: 1,
           skills: {
             [marketplace.skill]: {
               source: marketplace.name,
               path: marketplace.skill,
-              ref: "a".repeat(40),
+              ref: pinnedRef,
             },
           },
         };
@@ -160,7 +168,7 @@ describe.skipIf(!RUN_E2E)("e2e: real marketplace install/uninstall", () => {
         expect(reloaded!.skills[marketplace.skill].source).toBe(
           marketplace.name
         );
-        expect(reloaded!.skills[marketplace.skill].ref).toBe("a".repeat(40));
+        expect(reloaded!.skills[marketplace.skill].ref).toBe(pinnedRef);
 
         // --- Uninstall ---
         await removeSkill(marketplace.skill);

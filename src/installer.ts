@@ -1,4 +1,6 @@
 import { execa } from "execa";
+import { access } from "node:fs/promises";
+import { join } from "node:path";
 import { cloneAtRef, cleanupClone } from "./resolver.js";
 
 /**
@@ -11,23 +13,30 @@ import { cloneAtRef, cleanupClone } from "./resolver.js";
 export async function installSkill(
   source: string,
   skillName: string,
-  ref?: string
+  ref?: string,
+  skillPath?: string
 ): Promise<void> {
   if (ref) {
     const repoDir = await cloneAtRef(source, ref);
     try {
+      const installSource = skillPath ? join(repoDir, skillPath) : repoDir;
+      if (skillPath) {
+        await access(join(installSource, "SKILL.md"));
+      }
+
       await execa(
         "npx",
-        ["skills", "add", repoDir, "--skill", skillName, "--yes"],
+        ["skills", "add", installSource, "--skill", skillName, "--yes"],
         { stdio: "inherit" }
       );
     } finally {
       await cleanupClone(repoDir);
     }
   } else {
+    const installSource = skillPath ? join(source, skillPath) : source;
     await execa(
       "npx",
-      ["skills", "add", source, "--skill", skillName, "--yes"],
+      ["skills", "add", installSource, "--skill", skillName, "--yes"],
       { stdio: "inherit" }
     );
   }

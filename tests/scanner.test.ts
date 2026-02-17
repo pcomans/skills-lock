@@ -19,15 +19,27 @@ afterEach(async () => {
 });
 
 describe("scanInstalledSkills", () => {
-  it("returns empty array when .claude/skills/ does not exist", async () => {
+  it("returns empty array when skill directories do not exist", async () => {
     const result = await scanInstalledSkills();
     expect(result).toEqual([]);
   });
 
-  it("returns empty array when .claude/skills/ is empty", async () => {
-    await mkdir(".claude/skills", { recursive: true });
+  it("returns empty array when .agents/skills/ is empty", async () => {
+    await mkdir(".agents/skills", { recursive: true });
     const result = await scanInstalledSkills();
     expect(result).toEqual([]);
+  });
+
+  it("finds skills in canonical .agents/skills first", async () => {
+    const skillDir = join(".agents/skills/pdf");
+    await mkdir(skillDir, { recursive: true });
+    await writeFile(join(skillDir, "SKILL.md"), "# PDF Skill");
+
+    const result = await scanInstalledSkills();
+    expect(result).toHaveLength(1);
+    expect(result[0].name).toBe("pdf");
+    expect(result[0].diskPath).toBe(join(".agents/skills", "pdf"));
+    expect(result[0].hasSkillMd).toBe(true);
   });
 
   it("finds skill directories with SKILL.md", async () => {
@@ -62,6 +74,20 @@ describe("scanInstalledSkills", () => {
     expect(result).toHaveLength(2);
     const names = result.map((s) => s.name).sort();
     expect(names).toEqual(["pdf", "review"]);
+  });
+
+  it("deduplicates across .agents and .claude by preferring .agents", async () => {
+    await mkdir(".agents/skills/pdf", { recursive: true });
+    await writeFile(".agents/skills/pdf/SKILL.md", "# Canonical");
+
+    await mkdir(".claude/skills/pdf", { recursive: true });
+    await writeFile(".claude/skills/pdf/readme.txt", "fallback");
+
+    const result = await scanInstalledSkills();
+    expect(result).toHaveLength(1);
+    expect(result[0].name).toBe("pdf");
+    expect(result[0].diskPath).toBe(join(".agents/skills", "pdf"));
+    expect(result[0].hasSkillMd).toBe(true);
   });
 
   it("ignores files (non-directories) in skills dir", async () => {

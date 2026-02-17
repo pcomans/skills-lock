@@ -75,9 +75,11 @@ program
     const installedNames = new Set(installed.map((s) => s.name));
 
     let count = 0;
+    let skipped = 0;
     for (const [name, entry] of Object.entries(lockfile.skills)) {
       if (!opts.force && installedNames.has(name)) {
-        console.log(`  ${name} — already installed`);
+        console.log(`  ${name} — already installed (ref not verified; use --force to re-pin)`);
+        skipped++;
         continue;
       }
 
@@ -88,13 +90,15 @@ program
         console.log(`  ${name} — installing from ${entry.source} at ${entry.ref.slice(0, 7)}...`);
       }
 
-      await installSkill(entry.source, name, entry.ref);
+      await installSkill(entry.source, name, entry.ref, entry.path);
       count++;
     }
 
     console.log(
-      count === 0
-        ? "All skills already installed."
+      count === 0 && skipped > 0
+        ? "All skills already installed (refs not verified). Run 'skills-lock install --force' to re-pin."
+        : count === 0
+          ? "No skills to install."
         : `Installed ${count} skill(s).`
     );
   }));
@@ -117,10 +121,19 @@ program
       ref = await resolveRef(repoDir);
       const skills = await findSkills(repoDir, resolvedSource);
       const matched = skills.find((s) => s.name === skillName);
-      skillPath = matched?.path ?? skillName;
+      if (!matched) {
+        const available = skills.map((s) => s.name).sort();
+        if (available.length === 0) {
+          throw new Error(`No SKILL.md files found in ${resolvedSource}`);
+        }
+        throw new Error(
+          `Skill '${skillName}' not found in ${resolvedSource}. Available skills: ${available.join(", ")}`
+        );
+      }
+      skillPath = matched.path;
 
       console.log(`Installing ${skillName} at ${ref.slice(0, 7)}...`);
-      await installSkill(repoDir, skillName);
+      await installSkill(repoDir, skillName, undefined, skillPath);
     } finally {
       await cleanupClone(repoDir);
     }
@@ -190,7 +203,7 @@ program
 
       // Reinstall at the latest ref
       await removeSkill(name);
-      await installSkill(entry.source, name, latestRef);
+      await installSkill(entry.source, name, latestRef, entry.path);
 
       lockfile.skills[name] = {
         ...entry,
