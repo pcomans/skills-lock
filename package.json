@@ -1,0 +1,39 @@
+{
+  "name": "skills-lock",
+  "version": "0.1.0",
+  "description": "A lockfile for AI agent skills — pin, share, and reproduce skill installations across your team",
+  "type": "module",
+  "bin": {
+    "skills-lock": "./dist/cli.js"
+  },
+  "scripts": {
+    "build": "tsup",
+    "dev": "tsup --watch",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "typecheck": "tsc --noEmit",
+    "lint": "tsc --noEmit"
+  },
+  "keywords": [
+    "ai",
+    "skills",
+    "lockfile",
+    "agent",
+    "claude",
+    "cursor",
+    "reproducible"
+  ],
+  "author": "",
+  "license": "MIT",
+  "dependencies": {
+    "commander": "^13.1.0",
+    "execa": "^9.5.2",
+    "simple-git": "^3.27.0"
+  },
+  "devDependencies": {
+    "@types/node": "^25.2.3",
+    "tsup": "^8.4.0",
+    "typescript": "^5.7.3",
+    "vitest": "^3.0.5"
+  }
+}
