@@ -235,6 +235,30 @@ Use Claude Code marketplaces if everyone on your team uses Claude Code. Use `ski
 
 Both `add` and `install` use this same clone-then-install approach, so the locked SHA always matches what was actually installed.
 
+## Build from Source
+
+```bash
+git clone https://github.com/pcomans/skills-lock.git
+cd skills-lock
+npm install
+npm run build
+```
+
+Then run with npx from the local directory:
+
+```bash
+npx . init
+npx . add anthropics/skills --skill pdf
+npx . install
+```
+
+Or link it globally:
+
+```bash
+npm link
+skills-lock init
+```
+
 ## License
 
 MIT
