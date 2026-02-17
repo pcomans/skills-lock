@@ -6,10 +6,41 @@ import type { ResolvedSkill, ResolveOptions } from "./types.js";
 
 /**
  * Expand a source to a full Git URL.
- * Handles GitHub shorthand like "anthropics/skills".
+ * Handles GitHub shorthand like "anthropics/skills" and normalizes GitHub/GitLab
+ * tree URLs (e.g. copied from the browser) to bare repo URLs suitable for cloning.
  */
 export function expandSource(source: string): string {
-  if (source.startsWith("http://") || source.startsWith("https://") || source.startsWith("git@")) {
+  if (source.startsWith("git@")) {
+    return source;
+  }
+
+  if (source.startsWith("http://") || source.startsWith("https://")) {
+    let url: URL;
+    try {
+      url = new URL(source);
+    } catch {
+      return source;
+    }
+
+    if (url.hostname === "github.com") {
+      // Pathname: /owner/repo[/tree/<branch>[/<path>]]
+      // Take only the first two segments (owner + repo).
+      const [, owner, repo] = url.pathname.split("/");
+      if (owner && repo) {
+        const repoName = repo.endsWith(".git") ? repo.slice(0, -4) : repo;
+        return `https://github.com/${owner}/${repoName}.git`;
+      }
+    }
+
+    if (url.hostname === "gitlab.com") {
+      // GitLab browser tree URLs contain /-/tree/ — everything before it is the repo path.
+      // Works for flat repos and nested subgroups (group/subgroup/repo).
+      const treeIdx = url.pathname.indexOf("/-/tree/");
+      const repoPath = treeIdx !== -1 ? url.pathname.slice(0, treeIdx) : url.pathname;
+      const normalized = repoPath.endsWith(".git") ? repoPath.slice(0, -4) : repoPath;
+      return `https://gitlab.com${normalized}.git`;
+    }
+
     return source;
   }
 
