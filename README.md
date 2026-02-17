@@ -1,33 +1,36 @@
 # skills-lock
 
-A lockfile for AI agent skills. Pin, share, and reproduce skill installations across your team.
-
-**One file. Whole team. Same AI skills.**
-
-## The Problem
-
-Your team uses [Agent Skills](https://agentskills.io) — but there's no way to ensure everyone has the same skills installed at the same version. New team members have to manually `npx skills add` each one. CI environments start from scratch every time. And `npx skills` always installs the latest version — there's no way to pin.
-
-## The Solution
-
-`skills-lock` adds a committed `skills.lock` file that pins which skills your project uses, from where, at which exact commit.
+A lockfile for [Agent Skills](https://agentskills.io). Pin skill versions, commit the lockfile, and every teammate gets the exact same skills installed.
 
 ```bash
-git clone your-project && npx skills-lock install
-```
-
-## Quick Start
-
-```bash
-# Create an empty lockfile
-npx skills-lock init
-
-# Add skills (installs + locks)
 npx skills-lock add anthropics/skills --skill pdf
 npx skills-lock add anthropics/skills --skill xlsx
-
-# Commit the lockfile
 git add skills.lock && git commit -m "Lock skills"
+```
+
+A new teammate clones and runs one command:
+
+```bash
+npx skills-lock install
+```
+
+They get the same skills, at the same versions, every time.
+
+`npx skills add` has no `--ref` flag, no lockfile, and no way to pin. `skills-lock` adds a `skills.lock` that records the exact Git commit SHA for each skill, the same way `package-lock.json` works for npm.
+
+## Quick start
+
+**Initialize a lockfile:**
+
+```bash
+npx skills-lock init
+```
+
+**Add skills (installs them and records the current commit SHA):**
+
+```bash
+npx skills-lock add anthropics/skills --skill pdf
+npx skills-lock add anthropics/skills --skill algorithmic-art
 ```
 
 Your `skills.lock` now looks like this:
@@ -36,9 +39,9 @@ Your `skills.lock` now looks like this:
 {
   "version": 1,
   "skills": {
-    "xlsx": {
+    "algorithmic-art": {
       "source": "https://github.com/anthropics/skills.git",
-      "path": "document-skills/xlsx",
+      "path": "algorithmic-art",
       "ref": "a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2"
     },
     "pdf": {
@@ -50,108 +53,108 @@ Your `skills.lock` now looks like this:
 }
 ```
 
-A teammate clones the repo and runs:
+**Commit the lockfile:**
+
+```bash
+git add skills.lock && git commit -m "Lock skills"
+```
+
+**Restore skills from the lockfile (on another machine, in CI, etc.):**
 
 ```bash
 npx skills-lock install
 ```
 
-They get the exact same skills at the exact same versions.
-
 ## Commands
 
-### `skills-lock init`
+All commands use the `npx skills-lock` prefix. You can also install globally with `npm install -g skills-lock`.
 
-Creates an empty `skills.lock` file. Does nothing if one already exists.
+### init
+
+Creates an empty `skills.lock` file. Safe to run if one already exists; it's a no-op.
 
 ```
-$ skills-lock init
-Created skills.lock
-Add skills with "skills-lock add <source> --skill <name>".
+npx skills-lock init
 ```
 
-### `skills-lock add <source> --skill <name>`
+### add
 
-Installs a skill and records it in `skills.lock` with the exact commit SHA. If `skills.lock` doesn't exist yet, creates it.
+Installs a skill and pins it in `skills.lock` at the current commit SHA. Creates the lockfile if it does not exist yet.
+
+```
+npx skills-lock add <source> --skill <name>
+```
 
 The source can be GitHub shorthand or a full URL:
 
-```bash
-skills-lock add anthropics/skills --skill pdf
-skills-lock add https://github.com/acme/internal-skills.git --skill review
+```
+npx skills-lock add anthropics/skills --skill pdf
+npx skills-lock add https://github.com/acme/internal-skills.git --skill review
 ```
 
-What happens:
+Under the hood, `add` clones the source repo first, resolves the HEAD commit SHA, then installs from that local checkout. This clone-then-install order means the locked SHA always matches what was installed -- there is no race window where a new upstream commit could cause a mismatch.
 
-1. Clones the source repo and resolves the current HEAD commit SHA
-2. Finds the skill's path within the repo (e.g. `document-skills/pdf`)
-3. Installs the skill from the local checkout via `npx skills add`
-4. Normalizes the source to a full URL (e.g. `anthropics/skills` becomes `https://github.com/anthropics/skills.git`)
-5. Writes the entry to `skills.lock`
-6. Cleans up the temporary clone
-
-The clone-then-install order ensures the locked SHA always matches what was installed — there's no window where a new upstream commit could cause a mismatch.
+Example output:
 
 ```
-$ skills-lock add anthropics/skills --skill pdf
 Resolving pdf from anthropics/skills...
 Installing pdf at a1b2c3d...
 Added pdf to skills.lock (ref: a1b2c3d)
 ```
 
-### `skills-lock install [--force]`
+### install
 
-Reads `skills.lock` and installs any missing skills. Skills already present on disk are skipped.
-
-Each skill is installed at the **exact commit SHA** recorded in the lockfile — not the latest version. This is done by cloning the source repo, checking out the pinned commit, and installing from the local checkout.
+Reads `skills.lock` and installs any missing skills at their pinned commit SHAs. Skills already present on disk are skipped.
 
 ```
-$ skills-lock install
+npx skills-lock install
+```
+
+Example output:
+
+```
   pdf — already installed
   xlsx — installing from https://github.com/anthropics/skills.git at a1b2c3d...
 Installed 1 skill(s).
 ```
 
-Use `--force` to reinstall all skills at their pinned refs, even if already present on disk. This is useful when installed skills may have drifted from the lockfile (e.g. someone ran `npx skills add` directly):
+Use `--force` to reinstall all skills, even those already on disk. This is useful when someone ran `npx skills add` directly and the installed version may have drifted from the lockfile:
 
 ```
-$ skills-lock install --force
-  pdf — reinstalling at a1b2c3d...
-  xlsx — reinstalling at a1b2c3d...
-Installed 2 skill(s).
+npx skills-lock install --force
 ```
 
-Exits with code 0. Fails with an error if `skills.lock` doesn't exist.
+Fails with an error if `skills.lock` does not exist.
 
-### `skills-lock remove <name>`
+### remove
 
-Removes a skill from disk via `npx skills remove` and deletes it from `skills.lock`.
+Removes a skill from disk (via `npx skills remove`) and deletes its entry from `skills.lock`.
 
 ```
-$ skills-lock remove pdf
-Removed pdf
+npx skills-lock remove <name>
 ```
 
-Safe to run if the skill isn't in the lockfile — it still removes from disk.
+Safe to run even if the skill is not in the lockfile -- it still removes from disk.
 
-### `skills-lock update [name]`
+### update
 
-Checks source repos for newer commits. If a skill's source has new commits, removes and reinstalls the skill at the new ref, then updates `skills.lock`.
+Checks source repos for newer commits. If a skill has new commits upstream, reinstalls it at the latest ref and updates `skills.lock`.
 
 Update a single skill:
 
-```bash
-skills-lock update pdf
+```
+npx skills-lock update pdf
 ```
 
 Update all skills:
 
-```bash
-skills-lock update
+```
+npx skills-lock update
 ```
 
+Example output:
+
 ```
-$ skills-lock update
 Checking pdf...
   pdf — a1b2c3d → f4e5d6c
 Checking xlsx...
@@ -159,36 +162,37 @@ Checking xlsx...
 Updated 1 skill(s).
 ```
 
-### `skills-lock check`
+### check
 
 Compares installed skills against `skills.lock`. Reports missing skills (in lockfile but not installed) and extra skills (installed but not in lockfile).
 
 ```
-$ skills-lock check
-Missing (in lockfile but not installed):
-  - xlsx
-Extra (installed but not in lockfile):
-  - custom-skill
+npx skills-lock check
 ```
 
-Exits with code 0 if everything is in sync, code 1 if there are differences. Useful in CI:
+Exit code 0 if everything matches, exit code 1 if there are differences. Useful in CI:
 
-```bash
-npx skills-lock check || echo "Skills out of sync!"
+```
+npx skills-lock check || echo "Skills out of sync -- run npx skills-lock install"
 ```
 
-## Lockfile Format
+## Lockfile format
 
-`skills.lock` is a JSON file with sorted keys for deterministic output:
+`skills.lock` is a JSON file. Keys are sorted alphabetically for deterministic diffs.
 
 ```json
 {
   "version": 1,
   "skills": {
-    "<skill-name>": {
-      "source": "<full git URL>",
-      "path": "<path within repo to skill directory>",
-      "ref": "<full 40-character commit SHA>"
+    "pdf": {
+      "source": "https://github.com/anthropics/skills.git",
+      "path": "document-skills/pdf",
+      "ref": "a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2"
+    },
+    "xlsx": {
+      "source": "https://github.com/anthropics/skills.git",
+      "path": "document-skills/xlsx",
+      "ref": "a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2"
     }
   }
 }
@@ -197,45 +201,32 @@ npx skills-lock check || echo "Skills out of sync!"
 | Field | Description |
 |-------|-------------|
 | `version` | Always `1`. Lockfiles with other versions are rejected. |
-| `source` | Fully resolved Git URL (e.g. `https://github.com/anthropics/skills.git`). GitHub shorthand is expanded at lock time. |
-| `path` | Path within the source repo to the skill directory containing `SKILL.md`. |
+| `source` | Full Git URL. GitHub shorthand (e.g. `anthropics/skills`) is expanded at lock time. |
+| `path` | Path within the source repo to the skill directory (the one containing `SKILL.md`). |
 | `ref` | Full 40-character lowercase hex commit SHA. Tags, branch names, and short SHAs are rejected. |
 
-Skills are sorted alphabetically by name. The file ends with a trailing newline.
+The file ends with a trailing newline.
 
 ## Security
 
-- **Refs are full commit SHAs.** Tags and branch names are mutable — someone could point `v1.0` at malicious code. A full 40-character SHA is immutable and can't be changed without detection.
-- **Sources are normalized.** GitHub shorthand like `anthropics/skills` is expanded to `https://github.com/anthropics/skills.git` at lock time, so the lockfile is unambiguous about where code comes from.
-- **Install pins to the exact ref.** `skills-lock install` clones the source repo and checks out the exact commit from the lockfile — it does not install whatever is latest.
+Refs in `skills.lock` must be full 40-character commit SHAs. Tags, branch names, and short SHAs are rejected. GitHub shorthand is expanded to full URLs at lock time so the lockfile is unambiguous about where code comes from.
 
-## Why not Claude Code marketplaces?
+## How it works
 
-Claude Code has its own [plugin marketplace system](https://docs.anthropic.com/en/docs/claude-code/plugins) with built-in SHA pinning, managed restrictions, and team distribution via `.claude/settings.json`. If your team only uses Claude Code, that system already solves reproducibility — you don't need `skills-lock`.
+`skills-lock` wraps [Vercel's `npx skills`](https://www.npmjs.com/package/skills) CLI. Since `npx skills` has no ref pinning, `skills-lock` implements it:
 
-`skills-lock` exists for teams using the [Agent Skills standard](https://agentskills.io) across multiple IDEs. When you run `npx skills add`, it installs the same `SKILL.md` files to Claude Code, Cursor, Codex, Gemini CLI, Kiro, and Antigravity simultaneously. There's no built-in lockfile or version pinning for this cross-IDE workflow — that's the gap `skills-lock` fills.
-
-| | Claude Code Marketplaces | skills-lock |
-|---|---|---|
-| **Scope** | Claude Code only | All IDEs that support Agent Skills |
-| **Unit** | Plugins (commands, agents, hooks, MCP servers, skills) | Skills (`SKILL.md` files) |
-| **Pinning** | Built-in (`sha` field on plugin sources) | Added by skills-lock (`npx skills` has none) |
-| **Team config** | `.claude/settings.json` | `skills.lock` (committed to repo) |
-
-Use Claude Code marketplaces if everyone on your team uses Claude Code. Use `skills-lock` if your team uses a mix of AI coding tools and needs the same skills everywhere.
-
-## How It Works
-
-`skills-lock` wraps [Vercel's `npx skills`](https://www.npmjs.com/package/skills) CLI. Since `npx skills` has no `--ref` flag and always installs the latest version, `skills-lock` implements ref pinning itself:
-
-1. Clones the source repo
+1. Clones the source repo to a temporary directory
 2. Checks out the exact commit SHA from the lockfile
 3. Runs `npx skills add <local-path> --skill <name> --yes` against the local checkout
 4. Cleans up the temporary clone
 
-Both `add` and `install` use this same clone-then-install approach, so the locked SHA always matches what was actually installed.
+Both `add` and `install` use this same clone-then-install approach. The locked SHA always matches what was actually installed.
 
-## Build from Source
+## Why not Claude Code marketplaces?
+
+Claude Code has its own [plugin marketplace](https://docs.anthropic.com/en/docs/claude-code/plugins) with built-in SHA pinning via `.claude/settings.json`. If your whole team uses Claude Code, you don't need this. `skills-lock` is for teams using the [Agent Skills standard](https://agentskills.io) across multiple IDEs (Cursor, Codex, Gemini CLI, Kiro, Antigravity, etc.) where there is no built-in lockfile.
+
+## Build from source
 
 ```bash
 git clone https://github.com/pcomans/skills-lock.git
@@ -244,7 +235,7 @@ npm install
 npm run build
 ```
 
-Then run with npx from the local directory:
+Run from the local directory:
 
 ```bash
 npx . init
@@ -252,7 +243,7 @@ npx . add anthropics/skills --skill pdf
 npx . install
 ```
 
-Or link it globally:
+Or link globally:
 
 ```bash
 npm link
