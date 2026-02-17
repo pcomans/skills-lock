@@ -1,6 +1,6 @@
 # skills-lock
 
-A lockfile for [`npx skills`](https://skills.sh/). Pin [Agent Skills](https://agentskills.io) versions, commit the lockfile, and every teammate gets the exact same skills installed.
+A lockfile for [`npx skills`](https://skills.sh/). Pin [Agent Skills](https://agentskills.io) to specific commits, commit the lockfile, and give every teammate a reproducible install.
 
 ```bash
 npx skills-lock add anthropics/skills --skill pdf
@@ -14,9 +14,9 @@ A new teammate clones and runs one command:
 npx skills-lock install
 ```
 
-They get the same skills, at the same versions, every time.
+Missing skills are installed at the exact commit SHAs from the lockfile. Already-installed skills are skipped by name; use `--force` to re-pin everything.
 
-[`npx skills`](https://skills.sh/) has no `--ref` flag, no lockfile, and no way to pin. `skills-lock` adds a `skills.lock` that records the exact Git commit SHA for each skill, the same way `package-lock.json` works for npm.
+[`npx skills`](https://skills.sh/) has no `--ref` flag, no lockfile, and no way to pin. `skills-lock` adds a committed `skills.lock` file that records the Git commit SHA for each skill, similar to how `package-lock.json` works for npm.
 
 ## Quick start
 
@@ -92,7 +92,7 @@ npx skills-lock add anthropics/skills --skill pdf
 npx skills-lock add https://github.com/acme/internal-skills.git --skill review
 ```
 
-Under the hood, `add` clones the source repo first, resolves the HEAD commit SHA, then installs from that local checkout. This clone-then-install order means the locked SHA always matches what was installed -- there is no race window where a new upstream commit could cause a mismatch.
+Under the hood, `add` clones the source repo first, resolves the HEAD commit SHA, then installs from that local checkout. The skill name must match a discovered `SKILL.md` entry in the repo or the command fails. This clone-then-install order means the locked SHA always matches what was installed.
 
 Example output:
 
@@ -220,7 +220,7 @@ Refs in `skills.lock` must be full 40-character commit SHAs. Tags, branch names,
 3. Runs `npx skills add <local-path> --skill <name> --yes` against the local checkout
 4. Cleans up the temporary clone
 
-Both `add` and `install` use this same clone-then-install approach. The locked SHA always matches what was actually installed.
+Both `add` and `install` use this same clone-then-install approach, so every newly installed skill is guaranteed to match its lockfile ref. Skills already on disk are skipped unless you pass `--force`.
 
 ## Why not Claude Code marketplaces?
 
