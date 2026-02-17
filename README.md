@@ -24,7 +24,7 @@ npx skills-lock init
 
 # Add skills (installs + locks)
 npx skills-lock add anthropics/skills --skill pdf
-npx skills-lock add anthropics/skills --skill code-review
+npx skills-lock add anthropics/skills --skill xlsx
 
 # Commit the lockfile
 git add skills.lock && git commit -m "Lock skills"
@@ -36,9 +36,9 @@ Your `skills.lock` now looks like this:
 {
   "version": 1,
   "skills": {
-    "code-review": {
+    "xlsx": {
       "source": "https://github.com/anthropics/skills.git",
-      "path": "code-review",
+      "path": "document-skills/xlsx",
       "ref": "a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2"
     },
     "pdf": {
@@ -108,7 +108,7 @@ Each skill is installed at the **exact commit SHA** recorded in the lockfile —
 ```
 $ skills-lock install
   pdf — already installed
-  code-review — installing from https://github.com/anthropics/skills.git at a1b2c3d...
+  xlsx — installing from https://github.com/anthropics/skills.git at a1b2c3d...
 Installed 1 skill(s).
 ```
 
@@ -117,7 +117,7 @@ Use `--force` to reinstall all skills at their pinned refs, even if already pres
 ```
 $ skills-lock install --force
   pdf — reinstalling at a1b2c3d...
-  code-review — reinstalling at a1b2c3d...
+  xlsx — reinstalling at a1b2c3d...
 Installed 2 skill(s).
 ```
 
@@ -154,8 +154,8 @@ skills-lock update
 $ skills-lock update
 Checking pdf...
   pdf — a1b2c3d → f4e5d6c
-Checking code-review...
-  code-review — already up to date
+Checking xlsx...
+  xlsx — already up to date
 Updated 1 skill(s).
 ```
 
@@ -166,7 +166,7 @@ Compares installed skills against `skills.lock`. Reports missing skills (in lock
 ```
 $ skills-lock check
 Missing (in lockfile but not installed):
-  - code-review
+  - xlsx
 Extra (installed but not in lockfile):
   - custom-skill
 ```
