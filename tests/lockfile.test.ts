@@ -1,4 +1,4 @@
-import { mkdtempSync, rmSync, readFileSync } from "node:fs";
+import { mkdtempSync, rmSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { vi } from "vitest";
@@ -79,14 +79,14 @@ describe("lockfile", () => {
 
     it("throws on invalid JSON", async () => {
       const path = join(tmpDir, "bad.lock");
-      require("node:fs").writeFileSync(path, "not json {{{");
+      writeFileSync(path, "not json {{{");
 
       await expect(readLockfile(path)).rejects.toThrow();
     });
 
     it("throws on wrong version", async () => {
       const path = join(tmpDir, "bad-version.lock");
-      require("node:fs").writeFileSync(
+      writeFileSync(
         path,
         JSON.stringify({ version: 2, skills: {} })
       );
@@ -98,7 +98,7 @@ describe("lockfile", () => {
 
     it("throws on missing version", async () => {
       const path = join(tmpDir, "no-version.lock");
-      require("node:fs").writeFileSync(
+      writeFileSync(
         path,
         JSON.stringify({ skills: {} })
       );
@@ -110,7 +110,7 @@ describe("lockfile", () => {
 
     it("throws on invalid skill entry in file", async () => {
       const path = join(tmpDir, "bad-skill.lock");
-      require("node:fs").writeFileSync(
+      writeFileSync(
         path,
         JSON.stringify({
           version: 1,

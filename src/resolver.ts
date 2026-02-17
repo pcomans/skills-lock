@@ -1,5 +1,5 @@
 import { simpleGit } from "simple-git";
-import { mkdtemp, readdir, access } from "node:fs/promises";
+import { mkdtemp, readdir, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { ResolvedSkill, ResolveOptions } from "./types.js";
@@ -40,6 +40,32 @@ export async function resolveRepo(
 
   await git.clone(url, dir, cloneArgs);
   return dir;
+}
+
+/**
+ * Clone a source repo at a specific commit SHA.
+ * Unlike resolveRepo, this does a full clone to ensure the SHA is reachable,
+ * then checks out the exact commit.
+ */
+export async function cloneAtRef(
+  source: string,
+  ref: string
+): Promise<string> {
+  const url = expandSource(source);
+  const dir = await mkdtemp(join(tmpdir(), "skills-lock-"));
+  const git = simpleGit();
+
+  await git.clone(url, dir);
+  const repoGit = simpleGit(dir);
+  await repoGit.checkout(ref);
+  return dir;
+}
+
+/**
+ * Remove a temporary clone directory.
+ */
+export async function cleanupClone(dir: string): Promise<void> {
+  await rm(dir, { recursive: true, force: true });
 }
 
 /**

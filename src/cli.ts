@@ -1,13 +1,35 @@
+import { createRequire } from "node:module";
 import { Command } from "commander";
 import { readLockfile, writeLockfile, diffLockfiles } from "./lockfile.js";
-import { resolveRepo, resolveRef, expandSource } from "./resolver.js";
+import { resolveRepo, resolveRef, expandSource, cleanupClone, findSkills } from "./resolver.js";
 import { installSkill, removeSkill } from "./installer.js";
 import { scanInstalledSkills } from "./scanner.js";
 import type { Lockfile } from "./types.js";
 
+const require = createRequire(import.meta.url);
+const { version } = require("../package.json");
+
 function die(message: string): never {
   console.error(message);
   process.exit(1);
+}
+
+/**
+ * Wrap an async action handler with error handling.
+ * Catches errors and prints a clean message instead of a raw stack trace.
+ */
+function action<T extends unknown[]>(
+  fn: (...args: T) => Promise<void>
+): (...args: T) => Promise<void> {
+  return async (...args: T) => {
+    try {
+      await fn(...args);
+    } catch (err: unknown) {
+      const message =
+        err instanceof Error ? err.message : String(err);
+      die(`Error: ${message}`);
+    }
+  };
 }
 
 const program = new Command();
@@ -17,33 +39,27 @@ program
   .description(
     "A lockfile for AI agent skills — pin, share, and reproduce skill installations"
   )
-  .version("0.1.0");
+  .version(version);
 
 program
   .command("init")
-  .description("Generate skills.lock from currently installed skills")
-  .action(async () => {
-    const installed = await scanInstalledSkills();
-
-    if (installed.length === 0) {
-      console.log("No skills found in .agents/skills/ or .claude/skills/");
-      console.log('Install skills with "npx skills add <source>" first.');
+  .description("Create an empty skills.lock file")
+  .action(action(async () => {
+    const existing = await readLockfile();
+    if (existing) {
+      console.log("skills.lock already exists.");
       return;
     }
 
-    console.log(`Found ${installed.length} installed skill(s).`);
-    console.log(
-      "Note: cannot determine source repos from installed files."
-    );
-    console.log(
-      'Use "skills-lock add <source> --skill <name>" to lock skills with full provenance.'
-    );
-  });
+    await writeLockfile({ version: 1, skills: {} });
+    console.log("Created skills.lock");
+    console.log('Add skills with "skills-lock add <source> --skill <name>".');
+  }));
 
 program
   .command("install")
   .description("Install skills from skills.lock")
-  .action(async () => {
+  .action(action(async () => {
     const lockfile = await readLockfile();
     if (!lockfile) die("No skills.lock found. Run 'skills-lock add' to start.");
 
@@ -64,8 +80,8 @@ program
         continue;
       }
 
-      console.log(`  ${name} — installing from ${entry.source}...`);
-      await installSkill(entry.source, name);
+      console.log(`  ${name} — installing from ${entry.source} at ${entry.ref.slice(0, 7)}...`);
+      await installSkill(entry.source, name, entry.ref);
       count++;
     }
 
@@ -74,41 +90,46 @@ program
         ? "All skills already installed."
         : `Installed ${count} skill(s).`
     );
-  });
+  }));
 
 program
   .command("add <source>")
   .description("Install a skill and add it to skills.lock")
   .option("--skill <name>", "Skill name within the source repo")
-  .action(async (source: string, opts: { skill?: string }) => {
+  .action(action(async (source: string, opts: { skill?: string }) => {
     const skillName = opts.skill;
     if (!skillName) die("Please specify a skill name with --skill <name>");
 
     console.log(`Installing ${skillName} from ${source}...`);
     await installSkill(source, skillName);
 
-    // Resolve source to canonical URL and full commit SHA
+    // Resolve source to canonical URL, full commit SHA, and skill path within repo
     const resolvedSource = expandSource(source);
     const repoDir = await resolveRepo(source);
     const ref = await resolveRef(repoDir);
+    const skills = await findSkills(repoDir, resolvedSource);
+    await cleanupClone(repoDir);
+
+    const matched = skills.find((s) => s.name === skillName);
+    const skillPath = matched?.path ?? skillName;
 
     // Read or create lockfile
     const lockfile = (await readLockfile()) ?? { version: 1 as const, skills: {} };
 
     lockfile.skills[skillName] = {
       source: resolvedSource,
-      path: skillName,
+      path: skillPath,
       ref,
     };
 
     await writeLockfile(lockfile);
     console.log(`Added ${skillName} to skills.lock (ref: ${ref.slice(0, 7)})`);
-  });
+  }));
 
 program
   .command("remove <skill-name>")
   .description("Remove a skill and delete it from skills.lock")
-  .action(async (skillName: string) => {
+  .action(action(async (skillName: string) => {
     const lockfile = await readLockfile();
 
     if (lockfile && lockfile.skills[skillName]) {
@@ -118,12 +139,12 @@ program
 
     await removeSkill(skillName);
     console.log(`Removed ${skillName}`);
-  });
+  }));
 
 program
   .command("update [skill-name]")
   .description("Update skills to latest versions from source repos")
-  .action(async (skillName?: string) => {
+  .action(action(async (skillName?: string) => {
     const lockfile = await readLockfile();
     if (!lockfile) die("No skills.lock found. Run 'skills-lock add' to start.");
 
@@ -142,6 +163,7 @@ program
 
       const repoDir = await resolveRepo(entry.source);
       const latestRef = await resolveRef(repoDir);
+      await cleanupClone(repoDir);
 
       if (latestRef === entry.ref) {
         console.log(`  ${name} — already up to date`);
@@ -150,9 +172,9 @@ program
 
       console.log(`  ${name} — ${entry.ref.slice(0, 7)} → ${latestRef.slice(0, 7)}`);
 
-      // Reinstall with latest
+      // Reinstall at the latest ref
       await removeSkill(name);
-      await installSkill(entry.source, name);
+      await installSkill(entry.source, name, latestRef);
 
       lockfile.skills[name] = {
         ...entry,
@@ -167,12 +189,12 @@ program
       await writeLockfile(lockfile);
       console.log(`Updated ${diff.changed.length} skill(s).`);
     }
-  });
+  }));
 
 program
   .command("check")
   .description("Compare installed skills against skills.lock")
-  .action(async () => {
+  .action(action(async () => {
     const lockfile = await readLockfile();
     if (!lockfile) die("No skills.lock found. Run 'skills-lock add' to start.");
 
@@ -203,6 +225,6 @@ program
     }
 
     process.exit(1);
-  });
+  }));
 
 program.parse();
