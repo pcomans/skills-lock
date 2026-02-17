@@ -1,6 +1,6 @@
 # skills-lock
 
-A lockfile for [Agent Skills](https://agentskills.io). Pin skill versions, commit the lockfile, and every teammate gets the exact same skills installed.
+A lockfile for [`npx skills`](https://skills.sh/). Pin [Agent Skills](https://agentskills.io) versions, commit the lockfile, and every teammate gets the exact same skills installed.
 
 ```bash
 npx skills-lock add anthropics/skills --skill pdf
@@ -16,7 +16,7 @@ npx skills-lock install
 
 They get the same skills, at the same versions, every time.
 
-`npx skills add` has no `--ref` flag, no lockfile, and no way to pin. `skills-lock` adds a `skills.lock` that records the exact Git commit SHA for each skill, the same way `package-lock.json` works for npm.
+[`npx skills`](https://skills.sh/) has no `--ref` flag, no lockfile, and no way to pin. `skills-lock` adds a `skills.lock` that records the exact Git commit SHA for each skill, the same way `package-lock.json` works for npm.
 
 ## Quick start
 
