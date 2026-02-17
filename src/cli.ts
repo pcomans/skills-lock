@@ -59,7 +59,8 @@ program
 program
   .command("install")
   .description("Install skills from skills.lock")
-  .action(action(async () => {
+  .option("--force", "Reinstall all skills at their pinned refs, even if already present")
+  .action(action(async (opts: { force?: boolean }) => {
     const lockfile = await readLockfile();
     if (!lockfile) die("No skills.lock found. Run 'skills-lock add' to start.");
 
@@ -75,12 +76,18 @@ program
 
     let count = 0;
     for (const [name, entry] of Object.entries(lockfile.skills)) {
-      if (installedNames.has(name)) {
+      if (!opts.force && installedNames.has(name)) {
         console.log(`  ${name} — already installed`);
         continue;
       }
 
-      console.log(`  ${name} — installing from ${entry.source} at ${entry.ref.slice(0, 7)}...`);
+      if (opts.force && installedNames.has(name)) {
+        console.log(`  ${name} — reinstalling at ${entry.ref.slice(0, 7)}...`);
+        await removeSkill(name);
+      } else {
+        console.log(`  ${name} — installing from ${entry.source} at ${entry.ref.slice(0, 7)}...`);
+      }
+
       await installSkill(entry.source, name, entry.ref);
       count++;
     }
@@ -100,18 +107,21 @@ program
     const skillName = opts.skill;
     if (!skillName) die("Please specify a skill name with --skill <name>");
 
-    console.log(`Installing ${skillName} from ${source}...`);
-    await installSkill(source, skillName);
-
-    // Resolve source to canonical URL, full commit SHA, and skill path within repo
+    // Clone first to get the exact SHA, then install from that checkout
     const resolvedSource = expandSource(source);
+    console.log(`Resolving ${skillName} from ${source}...`);
     const repoDir = await resolveRepo(source);
     const ref = await resolveRef(repoDir);
     const skills = await findSkills(repoDir, resolvedSource);
-    await cleanupClone(repoDir);
-
     const matched = skills.find((s) => s.name === skillName);
     const skillPath = matched?.path ?? skillName;
+
+    console.log(`Installing ${skillName} at ${ref.slice(0, 7)}...`);
+    try {
+      await installSkill(repoDir, skillName);
+    } finally {
+      await cleanupClone(repoDir);
+    }
 
     // Read or create lockfile
     const lockfile = (await readLockfile()) ?? { version: 1 as const, skills: {} };

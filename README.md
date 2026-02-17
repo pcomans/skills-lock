@@ -72,7 +72,7 @@ Add skills with "skills-lock add <source> --skill <name>".
 
 ### `skills-lock add <source> --skill <name>`
 
-Installs a skill via `npx skills add`, then records it in `skills.lock` with the source repo's current HEAD commit SHA. If `skills.lock` doesn't exist yet, creates it.
+Installs a skill and records it in `skills.lock` with the exact commit SHA. If `skills.lock` doesn't exist yet, creates it.
 
 The source can be GitHub shorthand or a full URL:
 
@@ -83,19 +83,23 @@ skills-lock add https://github.com/acme/internal-skills.git --skill review
 
 What happens:
 
-1. Runs `npx skills add <source> --skill <name> --yes` to install the skill
-2. Clones the source repo to resolve the current HEAD commit SHA
-3. Finds the skill's path within the repo (e.g. `document-skills/pdf`)
+1. Clones the source repo and resolves the current HEAD commit SHA
+2. Finds the skill's path within the repo (e.g. `document-skills/pdf`)
+3. Installs the skill from the local checkout via `npx skills add`
 4. Normalizes the source to a full URL (e.g. `anthropics/skills` becomes `https://github.com/anthropics/skills.git`)
 5. Writes the entry to `skills.lock`
+6. Cleans up the temporary clone
+
+The clone-then-install order ensures the locked SHA always matches what was installed — there's no window where a new upstream commit could cause a mismatch.
 
 ```
 $ skills-lock add anthropics/skills --skill pdf
-Installing pdf from anthropics/skills...
+Resolving pdf from anthropics/skills...
+Installing pdf at a1b2c3d...
 Added pdf to skills.lock (ref: a1b2c3d)
 ```
 
-### `skills-lock install`
+### `skills-lock install [--force]`
 
 Reads `skills.lock` and installs any missing skills. Skills already present on disk are skipped.
 
@@ -106,6 +110,15 @@ $ skills-lock install
   pdf — already installed
   code-review — installing from https://github.com/anthropics/skills.git at a1b2c3d...
 Installed 1 skill(s).
+```
+
+Use `--force` to reinstall all skills at their pinned refs, even if already present on disk. This is useful when installed skills may have drifted from the lockfile (e.g. someone ran `npx skills add` directly):
+
+```
+$ skills-lock install --force
+  pdf — reinstalling at a1b2c3d...
+  code-review — reinstalling at a1b2c3d...
+Installed 2 skill(s).
 ```
 
 Exits with code 0. Fails with an error if `skills.lock` doesn't exist.
@@ -205,7 +218,7 @@ Skills are sorted alphabetically by name. The file ends with a trailing newline.
 3. Runs `npx skills add <local-path> --skill <name> --yes` against the local checkout
 4. Cleans up the temporary clone
 
-For `add`, it installs the latest version first (via the remote source), then separately clones the repo to capture the current HEAD SHA for the lockfile.
+Both `add` and `install` use this same clone-then-install approach, so the locked SHA always matches what was actually installed.
 
 ## License
 
