@@ -209,6 +209,21 @@ Skills are sorted alphabetically by name. The file ends with a trailing newline.
 - **Sources are normalized.** GitHub shorthand like `anthropics/skills` is expanded to `https://github.com/anthropics/skills.git` at lock time, so the lockfile is unambiguous about where code comes from.
 - **Install pins to the exact ref.** `skills-lock install` clones the source repo and checks out the exact commit from the lockfile — it does not install whatever is latest.
 
+## Why not Claude Code marketplaces?
+
+Claude Code has its own [plugin marketplace system](https://docs.anthropic.com/en/docs/claude-code/plugins) with built-in SHA pinning, managed restrictions, and team distribution via `.claude/settings.json`. If your team only uses Claude Code, that system already solves reproducibility — you don't need `skills-lock`.
+
+`skills-lock` exists for teams using the [Agent Skills standard](https://agentskills.io) across multiple IDEs. When you run `npx skills add`, it installs the same `SKILL.md` files to Claude Code, Cursor, Codex, Gemini CLI, Kiro, and Antigravity simultaneously. There's no built-in lockfile or version pinning for this cross-IDE workflow — that's the gap `skills-lock` fills.
+
+| | Claude Code Marketplaces | skills-lock |
+|---|---|---|
+| **Scope** | Claude Code only | All IDEs that support Agent Skills |
+| **Unit** | Plugins (commands, agents, hooks, MCP servers, skills) | Skills (`SKILL.md` files) |
+| **Pinning** | Built-in (`sha` field on plugin sources) | Added by skills-lock (`npx skills` has none) |
+| **Team config** | `.claude/settings.json` | `skills.lock` (committed to repo) |
+
+Use Claude Code marketplaces if everyone on your team uses Claude Code. Use `skills-lock` if your team uses a mix of AI coding tools and needs the same skills everywhere.
+
 ## How It Works
 
 `skills-lock` wraps [Vercel's `npx skills`](https://www.npmjs.com/package/skills) CLI. Since `npx skills` has no `--ref` flag and always installs the latest version, `skills-lock` implements ref pinning itself:
