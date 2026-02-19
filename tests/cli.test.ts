@@ -6,7 +6,7 @@
  * network calls are made.
  */
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
-import { mkdtemp, writeFile, readFile, rm } from "node:fs/promises";
+import { mkdtemp, writeFile, readFile, rm, chmod } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { execa } from "execa";
@@ -17,23 +17,34 @@ const SHA_A = "a".repeat(40);
 
 async function runCli(
   args: string[],
-  cwd: string
+  cwd: string,
+  env?: Record<string, string>
 ): Promise<{ stdout: string; stderr: string; exitCode: number }> {
-  try {
-    const result = await execa("node", [CLI, ...args], { cwd, reject: false });
-    return {
-      stdout: result.stdout,
-      stderr: result.stderr,
-      exitCode: result.exitCode ?? 0,
-    };
-  } catch (err: unknown) {
-    const e = err as { stdout?: string; stderr?: string; exitCode?: number };
-    return {
-      stdout: e.stdout ?? "",
-      stderr: e.stderr ?? "",
-      exitCode: e.exitCode ?? 1,
-    };
-  }
+  const result = await execa("node", [CLI, ...args], {
+    cwd,
+    reject: false,
+    env: env ? { ...process.env, ...env } : undefined,
+  });
+  return {
+    stdout: result.stdout,
+    stderr: result.stderr,
+    exitCode: result.exitCode ?? 0,
+  };
+}
+
+/**
+ * Creates a fake `npx` script in a temp bin dir that rejects any
+ * `npx skills ...` invocation with exit code 127. Returns the bin dir path
+ * so callers can prepend it to PATH.
+ */
+async function makeFakeNpxDir(tmpDir: string): Promise<string> {
+  const binDir = join(tmpDir, "fake-bin");
+  await execa("mkdir", ["-p", binDir]);
+  const realNpx = (await execa("which", ["npx"])).stdout.trim();
+  const script = `#!/bin/sh\nif [ "$1" = "skills" ]; then\n  echo "error: 'skills' is not installed" >&2\n  exit 127\nfi\nexec ${realNpx} "$@"\n`;
+  await writeFile(join(binDir, "npx"), script);
+  await chmod(join(binDir, "npx"), 0o755);
+  return binDir;
 }
 
 let tmpDir: string;
@@ -139,5 +150,57 @@ describe("init", () => {
 
     expect(exitCode).not.toBe(0);
     expect(stderr + stdout).toMatch(/unknown command/i);
+  });
+});
+
+describe("skills CLI not available", () => {
+  let fakeEnv: Record<string, string>;
+
+  beforeEach(async () => {
+    const binDir = await makeFakeNpxDir(tmpDir);
+    fakeEnv = { PATH: `${binDir}:${process.env.PATH}` };
+  });
+
+  it("install --force gives a clear error", async () => {
+    await writeFile(
+      join(tmpDir, "skills.lock"),
+      JSON.stringify({
+        version: 1,
+        skills: {
+          pdf: {
+            source: "https://github.com/anthropics/skills.git",
+            path: "skills/pdf",
+            ref: SHA_A,
+          },
+        },
+      }) + "\n"
+    );
+
+    const { exitCode, stderr } = await runCli(
+      ["install", "--force"],
+      tmpDir,
+      fakeEnv
+    );
+
+    expect(exitCode).toBe(1);
+    expect(stderr).toContain("skills");
+    expect(stderr).toContain("npm install");
+  });
+
+  it("remove gives a clear error", async () => {
+    await writeFile(
+      join(tmpDir, "skills.lock"),
+      JSON.stringify({ version: 1, skills: {} }) + "\n"
+    );
+
+    const { exitCode, stderr } = await runCli(
+      ["remove", "pdf"],
+      tmpDir,
+      fakeEnv
+    );
+
+    expect(exitCode).toBe(1);
+    expect(stderr).toContain("skills");
+    expect(stderr).toContain("npm install");
   });
 });

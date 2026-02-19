@@ -3,6 +3,30 @@ import { access } from "node:fs/promises";
 import { join } from "node:path";
 import { cloneAtRef, cleanupClone } from "./resolver.js";
 
+let skillsCliChecked = false;
+
+/**
+ * Verify that `npx skills` is available, throwing a clear error if not.
+ * Cached after the first successful check so subsequent calls are free.
+ */
+export async function checkSkillsCli(): Promise<void> {
+  if (skillsCliChecked) return;
+
+  const result = await execa("npx", ["skills", "--version"], {
+    stdio: "pipe",
+    reject: false,
+  }).catch(() => null);
+
+  if (!result || result.exitCode !== 0) {
+    throw new Error(
+      "The 'skills' CLI is not available.\n" +
+      "Install it with: npm install -g skills"
+    );
+  }
+
+  skillsCliChecked = true;
+}
+
 /**
  * Install a skill by calling `npx skills add`.
  *
@@ -16,6 +40,7 @@ export async function installSkill(
   ref?: string,
   skillPath?: string
 ): Promise<void> {
+  await checkSkillsCli();
   if (ref) {
     const repoDir = await cloneAtRef(source, ref);
     try {
@@ -47,6 +72,7 @@ export async function installSkill(
  * Uses --skill flag and --yes to skip confirmation prompts.
  */
 export async function removeSkill(skillName: string): Promise<void> {
+  await checkSkillsCli();
   await execa(
     "npx",
     ["skills", "remove", "--skill", skillName, "--yes"],
