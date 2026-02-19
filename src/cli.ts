@@ -42,21 +42,6 @@ program
   .version(version);
 
 program
-  .command("init")
-  .description("Create an empty skills.lock file")
-  .action(action(async () => {
-    const existing = await readLockfile();
-    if (existing) {
-      console.log("skills.lock already exists.");
-      return;
-    }
-
-    await writeLockfile({ version: 1, skills: {} });
-    console.log("Created skills.lock");
-    console.log('Add skills with "skills-lock add <source> --skill <name>".');
-  }));
-
-program
   .command("install")
   .description("Install skills from skills.lock")
   .option("--force", "Reinstall all skills at their pinned refs, even if already present")
@@ -107,9 +92,18 @@ program
   .command("add <source>")
   .description("Install a skill and add it to skills.lock")
   .option("--skill <name>", "Skill name within the source repo")
-  .action(action(async (source: string, opts: { skill?: string }) => {
+  .option("--force", "Reinstall and re-pin even if already in skills.lock")
+  .action(action(async (source: string, opts: { skill?: string; force?: boolean }) => {
     const skillName = opts.skill;
     if (!skillName) die("Please specify a skill name with --skill <name>");
+
+    // Guard against re-adding an already-pinned skill
+    const existingLockfile = await readLockfile();
+    if (existingLockfile?.skills[skillName] && !opts.force) {
+      const ref = existingLockfile.skills[skillName].ref;
+      console.log(`${skillName} is already in skills.lock (ref: ${ref.slice(0, 7)}). Use --force to reinstall.`);
+      return;
+    }
 
     // Clone first to get the exact SHA, then install from that checkout
     const resolvedSource = expandSource(source);
@@ -213,7 +207,7 @@ program
 
     const diff = diffLockfiles(oldLockfile, lockfile);
     if (diff.changed.length === 0) {
-      console.log("Everything up to date.");
+      console.log(Object.keys(toUpdate).length === 0 ? "No skills to update." : "Everything up to date.");
     } else {
       await writeLockfile(lockfile);
       console.log(`Updated ${diff.changed.length} skill(s).`);

@@ -20,12 +20,6 @@ Missing skills are installed at the exact commit SHAs from the lockfile. Already
 
 ## Quick start
 
-**Initialize a lockfile:**
-
-```bash
-npx skills-lock init
-```
-
 **Add skills (installs them and records the current commit SHA):**
 
 ```bash
@@ -41,12 +35,12 @@ Your `skills.lock` now looks like this:
   "skills": {
     "algorithmic-art": {
       "source": "https://github.com/anthropics/skills.git",
-      "path": "algorithmic-art",
+      "path": "skills/algorithmic-art",
       "ref": "a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2"
     },
     "pdf": {
       "source": "https://github.com/anthropics/skills.git",
-      "path": "document-skills/pdf",
+      "path": "skills/pdf",
       "ref": "a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2"
     }
   }
@@ -69,14 +63,6 @@ npx skills-lock install
 
 All commands use the `npx skills-lock` prefix. You can also install globally with `npm install -g skills-lock`.
 
-### init
-
-Creates an empty `skills.lock` file. Safe to run if one already exists; it's a no-op.
-
-```
-npx skills-lock init
-```
-
 ### add
 
 Installs a skill and pins it in `skills.lock` at the current commit SHA. Creates the lockfile if it does not exist yet.
@@ -90,6 +76,12 @@ The source can be GitHub shorthand or a full URL:
 ```
 npx skills-lock add anthropics/skills --skill pdf
 npx skills-lock add https://github.com/acme/internal-skills.git --skill review
+```
+
+If the skill is already in `skills.lock`, `add` skips it. Use `--force` to reinstall and re-pin at the latest commit:
+
+```
+npx skills-lock add anthropics/skills --skill pdf --force
 ```
 
 Under the hood, `add` clones the source repo first, resolves the HEAD commit SHA, then installs from that local checkout. The skill name must match a discovered `SKILL.md` entry in the repo or the command fails. This clone-then-install order means the locked SHA always matches what was installed.
@@ -186,12 +178,12 @@ npx skills-lock check || echo "Skills out of sync -- run npx skills-lock install
   "skills": {
     "pdf": {
       "source": "https://github.com/anthropics/skills.git",
-      "path": "document-skills/pdf",
+      "path": "skills/pdf",
       "ref": "a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2"
     },
     "xlsx": {
       "source": "https://github.com/anthropics/skills.git",
-      "path": "document-skills/xlsx",
+      "path": "skills/xlsx",
       "ref": "a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2"
     }
   }
