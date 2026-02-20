@@ -1,7 +1,7 @@
 import { createRequire } from "node:module";
 import { join } from "node:path";
 import { Command } from "commander";
-import { readLockfile, writeLockfile, diffLockfiles } from "./lockfile.js";
+import { readLockfile, writeLockfile } from "./lockfile.js";
 import { resolveRepo, resolveRef, expandSource, cleanupClone, findSkills } from "./resolver.js";
 import { installSkill, removeSkill, computeSkillHash, writeSkillMetadata } from "./installer.js";
 import { scanInstalledSkills } from "./scanner.js";
@@ -204,7 +204,7 @@ program
       ? { [skillName]: lockfile.skills[skillName] }
       : lockfile.skills;
 
-    const oldLockfile = structuredClone(lockfile);
+    let updatedCount = 0;
 
     for (const [name, entry] of Object.entries(toUpdate)) {
       console.log(`Checking ${name}...`);
@@ -232,19 +232,17 @@ program
       const integrity = await computeSkillHash(skillDir);
       await writeSkillMetadata(skillDir, latestRef, integrity);
 
-      lockfile.skills[name] = {
-        ...entry,
-        ref: latestRef,
-        integrity,
-      };
+      lockfile.skills[name] = { ...entry, ref: latestRef, integrity };
+
+      // Write after each successful update so partial runs are safe
+      await writeLockfile(lockfile);
+      updatedCount++;
     }
 
-    const diff = diffLockfiles(oldLockfile, lockfile);
-    if (diff.changed.length === 0) {
+    if (updatedCount === 0) {
       console.log(Object.keys(toUpdate).length === 0 ? "No skills to update." : "Everything up to date.");
     } else {
-      await writeLockfile(lockfile);
-      console.log(`Updated ${diff.changed.length} skill(s).`);
+      console.log(`Updated ${updatedCount} skill(s).`);
     }
   }));
 
@@ -283,9 +281,12 @@ program
         continue;
       }
 
-      if (entry.integrity && meta.integrity !== entry.integrity) {
-        modified.push(name);
-        continue;
+      if (entry.integrity) {
+        const diskHash = await computeSkillHash(installedSkill.diskPath);
+        if (diskHash !== entry.integrity) {
+          modified.push(name);
+          continue;
+        }
       }
     }
 
@@ -324,7 +325,7 @@ program
     }
 
     if (extra.length > 0) {
-      console.log("Extra (installed but not in lockfile):");
+      console.log("Extra (installed but not in lockfile — run 'skills-lock remove <name>' to remove):");
       for (const name of extra) console.log(`  - ${name}`);
     }
 

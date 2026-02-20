@@ -180,11 +180,13 @@ describe("check", () => {
   }
 
   it("reports 'All skills verified.' when everything matches", async () => {
+    // Omit integrity from the lockfile — when absent the hash check is skipped,
+    // so only the ref needs to match.
     await writeFile(
       join(tmpDir, "skills.lock"),
       JSON.stringify({
         version: 1,
-        skills: { pdf: { source: "https://github.com/anthropics/skills.git", path: "skills/pdf", ref: SHA_A, integrity } },
+        skills: { pdf: { source: "https://github.com/anthropics/skills.git", path: "skills/pdf", ref: SHA_A } },
       }) + "\n"
     );
     await makeSkillOnDisk("pdf", { ref: SHA_A, integrity });

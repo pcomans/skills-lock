@@ -14,7 +14,7 @@ A new teammate clones and runs one command:
 npx skills-lock install
 ```
 
-Missing skills are installed at the exact commit SHAs from the lockfile. Already-installed skills are skipped by name; use `--force` to re-pin everything.
+Missing skills are installed at the exact commit SHAs from the lockfile. Skills already on disk are verified against the locked ref and file integrity — drifted skills are reinstalled automatically. Use `--force` to reinstall everything unconditionally.
 
 [`npx skills`](https://skills.sh/) has no `--ref` flag, no lockfile, and no way to pin. `skills-lock` adds a committed `skills.lock` file that records the Git commit SHA for each skill, similar to how `package-lock.json` works for npm.
 
@@ -174,7 +174,7 @@ Modified on disk (run 'skills-lock install' to restore):
   - frontend-design
 Unverified (installed outside skills-lock — run 'skills-lock install' to pin):
   - xlsx
-Extra (installed but not in lockfile):
+Extra (installed but not in lockfile — run 'skills-lock remove <name>' to remove):
   - my-custom-skill
 ```
 
@@ -222,7 +222,7 @@ The file ends with a trailing newline.
 
 Refs in `skills.lock` must be full 40-character commit SHAs. Tags, branch names, and short SHAs are rejected. GitHub shorthand is expanded to full URLs at lock time so the lockfile is unambiguous about where code comes from.
 
-The `integrity` field is a SHA-256 hash of the installed skill directory contents, computed at `add`/`update` time and stored in `skills.lock`. `install` recomputes the hash after each install and fails if it doesn't match. `check` compares the stored hash against the local `.skills-lock` metadata file to detect files edited on disk since installation.
+The `integrity` field is a SHA-256 hash of the installed skill directory contents, computed at `add`/`update` time and stored in `skills.lock`. `install` recomputes the hash after each install and fails if it doesn't match. `check` recomputes the hash from actual disk files and compares it against `skills.lock` — it does not trust local metadata, so tampered files are always detected.
 
 ## How it works
 
@@ -251,7 +251,6 @@ npm run build
 Run from the local directory:
 
 ```bash
-npx . init
 npx . add anthropics/skills --skill pdf
 npx . install
 ```
@@ -260,7 +259,8 @@ Or link globally:
 
 ```bash
 npm link
-skills-lock init
+skills-lock add anthropics/skills --skill pdf
+skills-lock install
 ```
 
 ## License

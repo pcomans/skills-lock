@@ -115,7 +115,9 @@ export function diffLockfiles(
   const removed = [...oldNames].filter((n) => !newNames.has(n));
   const changed = [...newNames].filter((n) => {
     if (!oldNames.has(n)) return false;
-    return oldLock.skills[n].ref !== newLock.skills[n].ref;
+    const o = oldLock.skills[n];
+    const nw = newLock.skills[n];
+    return o.ref !== nw.ref || o.integrity !== nw.integrity;
   });
 
   return { added, removed, changed };
