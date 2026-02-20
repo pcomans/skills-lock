@@ -1,8 +1,9 @@
 import { createRequire } from "node:module";
+import { join } from "node:path";
 import { Command } from "commander";
 import { readLockfile, writeLockfile, diffLockfiles } from "./lockfile.js";
 import { resolveRepo, resolveRef, expandSource, cleanupClone, findSkills } from "./resolver.js";
-import { installSkill, removeSkill } from "./installer.js";
+import { installSkill, removeSkill, computeSkillHash, writeSkillMetadata } from "./installer.js";
 import { scanInstalledSkills } from "./scanner.js";
 import type { Lockfile } from "./types.js";
 
@@ -57,18 +58,30 @@ program
     }
 
     const installed = await scanInstalledSkills();
-    const installedNames = new Set(installed.map((s) => s.name));
+    const installedMap = new Map(installed.map((s) => [s.name, s]));
 
     let count = 0;
     let skipped = 0;
     for (const [name, entry] of Object.entries(lockfile.skills)) {
-      if (!opts.force && installedNames.has(name)) {
-        console.log(`  ${name} — already installed (ref not verified; use --force to re-pin)`);
-        skipped++;
-        continue;
-      }
+      const installedSkill = installedMap.get(name);
 
-      if (opts.force && installedNames.has(name)) {
+      if (!opts.force && installedSkill) {
+        const meta = installedSkill.metadata;
+        if (!meta) {
+          console.log(`  ${name} — reinstalling (installed outside skills-lock, no metadata)...`);
+          await removeSkill(name);
+        } else if (meta.ref !== entry.ref) {
+          console.log(`  ${name} — reinstalling (wrong ref: have ${meta.ref.slice(0, 7)}, want ${entry.ref.slice(0, 7)})...`);
+          await removeSkill(name);
+        } else if (entry.integrity && meta.integrity !== entry.integrity) {
+          console.log(`  ${name} — reinstalling (files modified on disk)...`);
+          await removeSkill(name);
+        } else {
+          console.log(`  ${name} — already installed`);
+          skipped++;
+          continue;
+        }
+      } else if (opts.force && installedSkill) {
         console.log(`  ${name} — reinstalling at ${entry.ref.slice(0, 7)}...`);
         await removeSkill(name);
       } else {
@@ -76,15 +89,25 @@ program
       }
 
       await installSkill(entry.source, name, entry.ref, entry.path);
+
+      const skillDir = join(".agents", "skills", name);
+      const computedIntegrity = await computeSkillHash(skillDir);
+      if (entry.integrity && computedIntegrity !== entry.integrity) {
+        throw new Error(
+          `Integrity check failed for '${name}': content does not match skills.lock.\n` +
+          `Run 'skills-lock add ${entry.source} --skill ${name} --force' to re-pin.`
+        );
+      }
+      await writeSkillMetadata(skillDir, entry.ref, computedIntegrity);
       count++;
     }
 
     console.log(
       count === 0 && skipped > 0
-        ? "All skills already installed (refs not verified). Run 'skills-lock install --force' to re-pin."
+        ? "All skills verified."
         : count === 0
           ? "No skills to install."
-        : `Installed ${count} skill(s).`
+          : `Installed ${count} skill(s).`
     );
   }));
 
@@ -132,6 +155,11 @@ program
       await cleanupClone(repoDir);
     }
 
+    // Compute hash and write local metadata
+    const skillDir = join(".agents", "skills", skillName);
+    const integrity = await computeSkillHash(skillDir);
+    await writeSkillMetadata(skillDir, ref, integrity);
+
     // Read or create lockfile
     const lockfile = (await readLockfile()) ?? { version: 1 as const, skills: {} };
 
@@ -139,6 +167,7 @@ program
       source: resolvedSource,
       path: skillPath,
       ref,
+      integrity,
     };
 
     await writeLockfile(lockfile);
@@ -199,9 +228,14 @@ program
       await removeSkill(name);
       await installSkill(entry.source, name, latestRef, entry.path);
 
+      const skillDir = join(".agents", "skills", name);
+      const integrity = await computeSkillHash(skillDir);
+      await writeSkillMetadata(skillDir, latestRef, integrity);
+
       lockfile.skills[name] = {
         ...entry,
         ref: latestRef,
+        integrity,
       };
     }
 
@@ -216,35 +250,82 @@ program
 
 program
   .command("check")
-  .description("Compare installed skills against skills.lock")
+  .description("Compare installed skills against skills.lock, including refs and file integrity")
   .action(action(async () => {
     const lockfile = await readLockfile();
     if (!lockfile) die("No skills.lock found. Run 'skills-lock add' to start.");
 
     const installed = await scanInstalledSkills();
-    const installedNames = new Set(installed.map((s) => s.name));
+    const installedMap = new Map(installed.map((s) => [s.name, s]));
     const lockedNames = new Set(Object.keys(lockfile.skills));
 
-    const missing = [...lockedNames].filter((n) => !installedNames.has(n));
-    const extra = [...installedNames].filter((n) => !lockedNames.has(n));
+    const missing: string[] = [];
+    const wrongRef: { name: string; have: string; want: string }[] = [];
+    const modified: string[] = [];
+    const unverified: string[] = [];
+    const extra = installed.map((s) => s.name).filter((n) => !lockedNames.has(n));
 
-    if (missing.length === 0 && extra.length === 0) {
-      console.log("All skills in sync.");
+    for (const [name, entry] of Object.entries(lockfile.skills)) {
+      const installedSkill = installedMap.get(name);
+      if (!installedSkill) {
+        missing.push(name);
+        continue;
+      }
+
+      const meta = installedSkill.metadata;
+      if (!meta) {
+        unverified.push(name);
+        continue;
+      }
+
+      if (meta.ref !== entry.ref) {
+        wrongRef.push({ name, have: meta.ref, want: entry.ref });
+        continue;
+      }
+
+      if (entry.integrity && meta.integrity !== entry.integrity) {
+        modified.push(name);
+        continue;
+      }
+    }
+
+    const hasIssues =
+      missing.length > 0 ||
+      wrongRef.length > 0 ||
+      modified.length > 0 ||
+      unverified.length > 0 ||
+      extra.length > 0;
+
+    if (!hasIssues) {
+      console.log("All skills verified.");
       return;
     }
 
     if (missing.length > 0) {
       console.log("Missing (in lockfile but not installed):");
-      for (const name of missing) {
-        console.log(`  - ${name}`);
+      for (const name of missing) console.log(`  - ${name}`);
+    }
+
+    if (wrongRef.length > 0) {
+      console.log("Wrong ref (run 'skills-lock install' to fix):");
+      for (const { name, have, want } of wrongRef) {
+        console.log(`  - ${name}: have ${have.slice(0, 7)}, want ${want.slice(0, 7)}`);
       }
+    }
+
+    if (modified.length > 0) {
+      console.log("Modified on disk (run 'skills-lock install' to restore):");
+      for (const name of modified) console.log(`  - ${name}`);
+    }
+
+    if (unverified.length > 0) {
+      console.log("Unverified (installed outside skills-lock — run 'skills-lock install' to pin):");
+      for (const name of unverified) console.log(`  - ${name}`);
     }
 
     if (extra.length > 0) {
       console.log("Extra (installed but not in lockfile):");
-      for (const name of extra) {
-        console.log(`  - ${name}`);
-      }
+      for (const name of extra) console.log(`  - ${name}`);
     }
 
     process.exit(1);

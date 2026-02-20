@@ -96,7 +96,7 @@ Added pdf to skills.lock (ref: a1b2c3d)
 
 ### install
 
-Reads `skills.lock` and installs any missing skills at their pinned commit SHAs. Skills already present on disk are skipped.
+Reads `skills.lock` and installs missing skills. For skills already on disk, compares the installed ref and file integrity against the lockfile — reinstalling automatically if either has drifted.
 
 ```
 npx skills-lock install
@@ -106,11 +106,12 @@ Example output:
 
 ```
   pdf — already installed
+  frontend-design — reinstalling (wrong ref: abc1234 → def5678)...
   xlsx — installing from https://github.com/anthropics/skills.git at a1b2c3d...
-Installed 1 skill(s).
+Installed 2 skill(s).
 ```
 
-Use `--force` to reinstall all skills, even those already on disk. This is useful when someone ran `npx skills add` directly and the installed version may have drifted from the lockfile:
+Use `--force` to reinstall everything regardless of whether it matches:
 
 ```
 npx skills-lock install --force
@@ -156,13 +157,28 @@ Updated 1 skill(s).
 
 ### check
 
-Compares installed skills against `skills.lock`. Reports missing skills (in lockfile but not installed) and extra skills (installed but not in lockfile).
+Compares installed skills against `skills.lock` across three dimensions: presence, ref, and file integrity.
 
 ```
 npx skills-lock check
 ```
 
-Exit code 0 if everything matches, exit code 1 if there are differences. Useful in CI:
+Example output when issues are found:
+
+```
+Missing (in lockfile but not installed):
+  - review
+Wrong ref (run 'skills-lock install' to fix):
+  - pdf: have abc1234, want def5678
+Modified on disk (run 'skills-lock install' to restore):
+  - frontend-design
+Unverified (installed outside skills-lock — run 'skills-lock install' to pin):
+  - xlsx
+Extra (installed but not in lockfile):
+  - my-custom-skill
+```
+
+Exit code 0 if everything is verified, exit code 1 if there are any differences. Useful in CI:
 
 ```
 npx skills-lock check || echo "Skills out of sync -- run npx skills-lock install"
@@ -179,12 +195,14 @@ npx skills-lock check || echo "Skills out of sync -- run npx skills-lock install
     "pdf": {
       "source": "https://github.com/anthropics/skills.git",
       "path": "skills/pdf",
-      "ref": "a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2"
+      "ref": "a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2",
+      "integrity": "sha256:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
     },
     "xlsx": {
       "source": "https://github.com/anthropics/skills.git",
       "path": "skills/xlsx",
-      "ref": "a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2"
+      "ref": "a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2",
+      "integrity": "sha256:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
     }
   }
 }
@@ -196,12 +214,15 @@ npx skills-lock check || echo "Skills out of sync -- run npx skills-lock install
 | `source` | Full Git URL. GitHub shorthand (e.g. `anthropics/skills`) is expanded at lock time. |
 | `path` | Path within the source repo to the skill directory (the one containing `SKILL.md`). |
 | `ref` | Full 40-character lowercase hex commit SHA. Tags, branch names, and short SHAs are rejected. |
+| `integrity` | SHA-256 hash of the skill directory contents at the pinned ref (`sha256:<64 hex chars>`). Written at `add`/`update` time. Used by `check` and `install` to detect file edits and ref drift. |
 
 The file ends with a trailing newline.
 
 ## Security
 
 Refs in `skills.lock` must be full 40-character commit SHAs. Tags, branch names, and short SHAs are rejected. GitHub shorthand is expanded to full URLs at lock time so the lockfile is unambiguous about where code comes from.
+
+The `integrity` field is a SHA-256 hash of the installed skill directory contents, computed at `add`/`update` time and stored in `skills.lock`. `install` recomputes the hash after each install and fails if it doesn't match. `check` compares the stored hash against the local `.skills-lock` metadata file to detect files edited on disk since installation.
 
 ## How it works
 

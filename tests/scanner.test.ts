@@ -97,4 +97,31 @@ describe("scanInstalledSkills", () => {
     const result = await scanInstalledSkills();
     expect(result).toEqual([]);
   });
+
+  it("includes metadata when .skills-lock file is present", async () => {
+    const skillDir = join(".agents/skills/pdf");
+    await mkdir(skillDir, { recursive: true });
+    await writeFile(join(skillDir, "SKILL.md"), "# PDF");
+    await writeFile(
+      join(skillDir, ".skills-lock"),
+      JSON.stringify({ ref: "a".repeat(40), integrity: `sha256:${"b".repeat(64)}` }) + "\n"
+    );
+
+    const result = await scanInstalledSkills();
+    expect(result).toHaveLength(1);
+    expect(result[0].metadata).toEqual({
+      ref: "a".repeat(40),
+      integrity: `sha256:${"b".repeat(64)}`,
+    });
+  });
+
+  it("metadata is undefined when .skills-lock file is absent", async () => {
+    const skillDir = join(".agents/skills/pdf");
+    await mkdir(skillDir, { recursive: true });
+    await writeFile(join(skillDir, "SKILL.md"), "# PDF");
+
+    const result = await scanInstalledSkills();
+    expect(result).toHaveLength(1);
+    expect(result[0].metadata).toBeUndefined();
+  });
 });

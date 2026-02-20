@@ -8,6 +8,8 @@ export interface SkillEntry {
   path: string;
   /** Full 40-character commit SHA */
   ref: string;
+  /** SHA-256 hash of the skill directory contents at the pinned ref (e.g. "sha256:abc123...") */
+  integrity?: string;
 }
 
 /**
@@ -33,6 +35,16 @@ export interface ResolvedSkill {
 }
 
 /**
+ * Metadata stored alongside an installed skill in .skills-lock.
+ */
+export interface SkillMetadata {
+  /** Commit SHA the skill was installed from */
+  ref: string;
+  /** SHA-256 hash of the skill directory at install time */
+  integrity: string;
+}
+
+/**
  * A skill found on disk by the scanner.
  */
 export interface InstalledSkill {
@@ -42,6 +54,8 @@ export interface InstalledSkill {
   diskPath: string;
   /** Whether a SKILL.md file exists */
   hasSkillMd: boolean;
+  /** Metadata written by skills-lock at install time, if present */
+  metadata?: SkillMetadata;
 }
 
 /**

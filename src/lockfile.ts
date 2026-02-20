@@ -86,6 +86,18 @@ export function validateLockfile(data: unknown): asserts data is Lockfile {
         `Skill '${name}' has invalid ref '${skill["ref"]}' — must be a full 40-character commit SHA`
       );
     }
+
+    // Validate optional integrity field
+    if (skill["integrity"] !== undefined) {
+      if (typeof skill["integrity"] !== "string") {
+        throw new Error(`Skill '${name}' has invalid 'integrity' field — must be a string`);
+      }
+      if (!/^sha256:[0-9a-f]{64}$/.test(skill["integrity"] as string)) {
+        throw new Error(
+          `Skill '${name}' has invalid integrity '${skill["integrity"]}' — must be "sha256:<64 hex chars>"`
+        );
+      }
+    }
   }
 }
 

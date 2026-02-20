@@ -329,6 +329,50 @@ describe("lockfile", () => {
         validateLockfile({ version: 1, skills: { pdf: entry } })
       ).not.toThrow();
     });
+
+    // --- integrity field ---
+
+    it("accepts a skill with a valid integrity field", () => {
+      const entry = { source: "a", path: "b", ref: SHA_A, integrity: `sha256:${"a".repeat(64)}` };
+      expect(() =>
+        validateLockfile({ version: 1, skills: { pdf: entry } })
+      ).not.toThrow();
+    });
+
+    it("accepts a skill without an integrity field", () => {
+      const entry = { source: "a", path: "b", ref: SHA_A };
+      expect(() =>
+        validateLockfile({ version: 1, skills: { pdf: entry } })
+      ).not.toThrow();
+    });
+
+    it("rejects a non-string integrity field", () => {
+      const entry = { source: "a", path: "b", ref: SHA_A, integrity: 12345 };
+      expect(() =>
+        validateLockfile({ version: 1, skills: { pdf: entry } })
+      ).toThrow("invalid 'integrity' field");
+    });
+
+    it("rejects integrity without sha256: prefix", () => {
+      const entry = { source: "a", path: "b", ref: SHA_A, integrity: "a".repeat(64) };
+      expect(() =>
+        validateLockfile({ version: 1, skills: { pdf: entry } })
+      ).toThrow("invalid integrity");
+    });
+
+    it("rejects integrity with wrong hash length", () => {
+      const entry = { source: "a", path: "b", ref: SHA_A, integrity: "sha256:abc123" };
+      expect(() =>
+        validateLockfile({ version: 1, skills: { pdf: entry } })
+      ).toThrow("invalid integrity");
+    });
+
+    it("rejects integrity with uppercase hex", () => {
+      const entry = { source: "a", path: "b", ref: SHA_A, integrity: `sha256:${"A".repeat(64)}` };
+      expect(() =>
+        validateLockfile({ version: 1, skills: { pdf: entry } })
+      ).toThrow("invalid integrity");
+    });
   });
 
   // ---------- diffLockfiles ----------

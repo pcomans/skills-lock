@@ -1,6 +1,7 @@
 import { readdir, access, stat } from "node:fs/promises";
 import { join } from "node:path";
 import type { InstalledSkill } from "./types.js";
+import { readSkillMetadata } from "./installer.js";
 
 /**
  * Known skill directories for different AI agents.
@@ -55,11 +56,14 @@ export async function scanInstalledSkills(): Promise<InstalledSkill[]> {
         // No SKILL.md — still count it as installed
       }
 
+      const metadata = await readSkillMetadata(diskPath) ?? undefined;
+
       seen.add(name);
       skills.push({
         name,
         diskPath,
         hasSkillMd,
+        metadata,
       });
     }
   }

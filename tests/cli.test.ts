@@ -142,6 +142,135 @@ describe("install", () => {
     expect(exitCode).toBe(0);
     expect(stdout).toContain("No skills in lockfile");
   });
+
+  it("reports 'All skills verified.' when metadata matches lockfile", async () => {
+    const integrity = `sha256:${"a".repeat(64)}`;
+    await writeFile(
+      join(tmpDir, "skills.lock"),
+      JSON.stringify({
+        version: 1,
+        skills: {
+          pdf: { source: "https://github.com/anthropics/skills.git", path: "skills/pdf", ref: SHA_A, integrity },
+        },
+      }) + "\n"
+    );
+    // Create the skill dir with matching metadata
+    const skillDir = join(tmpDir, ".agents", "skills", "pdf");
+    await execa("mkdir", ["-p", skillDir]);
+    await writeFile(join(skillDir, "SKILL.md"), "# PDF");
+    await writeFile(join(skillDir, ".skills-lock"), JSON.stringify({ ref: SHA_A, integrity }) + "\n");
+
+    const { stdout, exitCode } = await runCli(["install"], tmpDir);
+
+    expect(exitCode).toBe(0);
+    expect(stdout).toContain("All skills verified.");
+  });
+});
+
+describe("check", () => {
+  const integrity = `sha256:${"a".repeat(64)}`;
+
+  async function makeSkillOnDisk(name: string, meta?: { ref: string; integrity: string }) {
+    const skillDir = join(tmpDir, ".agents", "skills", name);
+    await execa("mkdir", ["-p", skillDir]);
+    await writeFile(join(skillDir, "SKILL.md"), "# Skill");
+    if (meta) {
+      await writeFile(join(skillDir, ".skills-lock"), JSON.stringify(meta) + "\n");
+    }
+  }
+
+  it("reports 'All skills verified.' when everything matches", async () => {
+    await writeFile(
+      join(tmpDir, "skills.lock"),
+      JSON.stringify({
+        version: 1,
+        skills: { pdf: { source: "https://github.com/anthropics/skills.git", path: "skills/pdf", ref: SHA_A, integrity } },
+      }) + "\n"
+    );
+    await makeSkillOnDisk("pdf", { ref: SHA_A, integrity });
+
+    const { stdout, exitCode } = await runCli(["check"], tmpDir);
+    expect(exitCode).toBe(0);
+    expect(stdout).toContain("All skills verified.");
+  });
+
+  it("reports missing skill with exit 1", async () => {
+    await writeFile(
+      join(tmpDir, "skills.lock"),
+      JSON.stringify({
+        version: 1,
+        skills: { pdf: { source: "https://github.com/anthropics/skills.git", path: "skills/pdf", ref: SHA_A } },
+      }) + "\n"
+    );
+
+    const { stdout, exitCode } = await runCli(["check"], tmpDir);
+    expect(exitCode).toBe(1);
+    expect(stdout).toContain("Missing");
+    expect(stdout).toContain("pdf");
+  });
+
+  it("reports wrong ref with exit 1", async () => {
+    const wrongRef = "b".repeat(40);
+    await writeFile(
+      join(tmpDir, "skills.lock"),
+      JSON.stringify({
+        version: 1,
+        skills: { pdf: { source: "https://github.com/anthropics/skills.git", path: "skills/pdf", ref: SHA_A, integrity } },
+      }) + "\n"
+    );
+    await makeSkillOnDisk("pdf", { ref: wrongRef, integrity });
+
+    const { stdout, exitCode } = await runCli(["check"], tmpDir);
+    expect(exitCode).toBe(1);
+    expect(stdout).toContain("Wrong ref");
+    expect(stdout).toContain("pdf");
+  });
+
+  it("reports modified files with exit 1", async () => {
+    const differentIntegrity = `sha256:${"b".repeat(64)}`;
+    await writeFile(
+      join(tmpDir, "skills.lock"),
+      JSON.stringify({
+        version: 1,
+        skills: { pdf: { source: "https://github.com/anthropics/skills.git", path: "skills/pdf", ref: SHA_A, integrity } },
+      }) + "\n"
+    );
+    // metadata ref matches but integrity differs
+    await makeSkillOnDisk("pdf", { ref: SHA_A, integrity: differentIntegrity });
+
+    const { stdout, exitCode } = await runCli(["check"], tmpDir);
+    expect(exitCode).toBe(1);
+    expect(stdout).toContain("Modified");
+    expect(stdout).toContain("pdf");
+  });
+
+  it("reports unverified skill (no metadata) with exit 1", async () => {
+    await writeFile(
+      join(tmpDir, "skills.lock"),
+      JSON.stringify({
+        version: 1,
+        skills: { pdf: { source: "https://github.com/anthropics/skills.git", path: "skills/pdf", ref: SHA_A } },
+      }) + "\n"
+    );
+    await makeSkillOnDisk("pdf"); // no metadata
+
+    const { stdout, exitCode } = await runCli(["check"], tmpDir);
+    expect(exitCode).toBe(1);
+    expect(stdout).toContain("Unverified");
+  });
+
+  it("reports extra skill with exit 1", async () => {
+    await writeFile(
+      join(tmpDir, "skills.lock"),
+      JSON.stringify({ version: 1, skills: {} }) + "\n"
+    );
+    await makeSkillOnDisk("rogue-skill");
+
+    const { stdout, exitCode } = await runCli(["check"], tmpDir);
+    expect(exitCode).toBe(1);
+    expect(stdout).toContain("Extra");
+    expect(stdout).toContain("rogue-skill");
+  });
 });
 
 describe("init", () => {
