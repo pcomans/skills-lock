@@ -6,14 +6,12 @@ import {
   readLockfile,
   writeLockfile,
   validateLockfile,
-  diffLockfiles,
 } from "../src/lockfile.js";
 import type { Lockfile } from "../src/types.js";
 
 /** A valid 40-char hex SHA for tests */
 const SHA_A = "a".repeat(40);
 const SHA_B = "b".repeat(40);
-const SHA_C = "c".repeat(40);
 
 function makeLockfile(skills: Lockfile["skills"] = {}): Lockfile {
   return { version: 1, skills };
@@ -372,129 +370,6 @@ describe("lockfile", () => {
       expect(() =>
         validateLockfile({ version: 1, skills: { pdf: entry } })
       ).toThrow("invalid integrity");
-    });
-  });
-
-  // ---------- diffLockfiles ----------
-
-  describe("diffLockfiles", () => {
-    it("returns empty diff for identical lockfiles", () => {
-      const lock = makeLockfile({
-        pdf: makeSkillEntry(),
-        xlsx: makeSkillEntry({ ref: SHA_B }),
-      });
-
-      const diff = diffLockfiles(lock, lock);
-      expect(diff.added).toEqual([]);
-      expect(diff.removed).toEqual([]);
-      expect(diff.changed).toEqual([]);
-    });
-
-    it("returns empty diff for two empty lockfiles", () => {
-      const diff = diffLockfiles(makeLockfile(), makeLockfile());
-      expect(diff.added).toEqual([]);
-      expect(diff.removed).toEqual([]);
-      expect(diff.changed).toEqual([]);
-    });
-
-    it("detects added skills", () => {
-      const oldLock = makeLockfile({
-        pdf: makeSkillEntry(),
-      });
-      const newLock = makeLockfile({
-        pdf: makeSkillEntry(),
-        xlsx: makeSkillEntry({ path: "document-skills/xlsx" }),
-      });
-
-      const diff = diffLockfiles(oldLock, newLock);
-      expect(diff.added).toEqual(["xlsx"]);
-      expect(diff.removed).toEqual([]);
-      expect(diff.changed).toEqual([]);
-    });
-
-    it("detects removed skills", () => {
-      const oldLock = makeLockfile({
-        pdf: makeSkillEntry(),
-        xlsx: makeSkillEntry({ path: "document-skills/xlsx" }),
-      });
-      const newLock = makeLockfile({
-        pdf: makeSkillEntry(),
-      });
-
-      const diff = diffLockfiles(oldLock, newLock);
-      expect(diff.added).toEqual([]);
-      expect(diff.removed).toEqual(["xlsx"]);
-      expect(diff.changed).toEqual([]);
-    });
-
-    it("detects changed skills (different ref)", () => {
-      const oldLock = makeLockfile({
-        pdf: makeSkillEntry({ ref: SHA_A }),
-      });
-      const newLock = makeLockfile({
-        pdf: makeSkillEntry({ ref: SHA_B }),
-      });
-
-      const diff = diffLockfiles(oldLock, newLock);
-      expect(diff.added).toEqual([]);
-      expect(diff.removed).toEqual([]);
-      expect(diff.changed).toEqual(["pdf"]);
-    });
-
-    it("does not flag skills as changed when only non-ref fields differ", () => {
-      const oldLock = makeLockfile({
-        pdf: makeSkillEntry({ path: "path-a" }),
-      });
-      const newLock = makeLockfile({
-        pdf: makeSkillEntry({ path: "path-b" }),
-      });
-
-      const diff = diffLockfiles(oldLock, newLock);
-      expect(diff.changed).toEqual([]);
-    });
-
-    it("detects added, removed, and changed simultaneously", () => {
-      const oldLock = makeLockfile({
-        pdf: makeSkillEntry({ ref: SHA_A }),
-        xlsx: makeSkillEntry({ path: "xlsx" }),
-        csv: makeSkillEntry({ path: "csv" }),
-      });
-      const newLock = makeLockfile({
-        pdf: makeSkillEntry({ ref: SHA_B }),
-        csv: makeSkillEntry({ path: "csv" }),
-        json: makeSkillEntry({ path: "json" }),
-      });
-
-      const diff = diffLockfiles(oldLock, newLock);
-      expect(diff.added).toEqual(["json"]);
-      expect(diff.removed).toEqual(["xlsx"]);
-      expect(diff.changed).toEqual(["pdf"]);
-    });
-
-    it("detects all skills as added when old lockfile is empty", () => {
-      const oldLock = makeLockfile();
-      const newLock = makeLockfile({
-        pdf: makeSkillEntry(),
-        xlsx: makeSkillEntry(),
-      });
-
-      const diff = diffLockfiles(oldLock, newLock);
-      expect(diff.added.sort()).toEqual(["pdf", "xlsx"]);
-      expect(diff.removed).toEqual([]);
-      expect(diff.changed).toEqual([]);
-    });
-
-    it("detects all skills as removed when new lockfile is empty", () => {
-      const oldLock = makeLockfile({
-        pdf: makeSkillEntry(),
-        xlsx: makeSkillEntry(),
-      });
-      const newLock = makeLockfile();
-
-      const diff = diffLockfiles(oldLock, newLock);
-      expect(diff.added).toEqual([]);
-      expect(diff.removed.sort()).toEqual(["pdf", "xlsx"]);
-      expect(diff.changed).toEqual([]);
     });
   });
 });

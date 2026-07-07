@@ -57,22 +57,3 @@ export interface InstalledSkill {
   /** Metadata written by skills-lock at install time, if present */
   metadata?: SkillMetadata;
 }
-
-/**
- * Diff between two lockfile states.
- */
-export interface LockfileDiff {
-  added: string[];
-  removed: string[];
-  changed: string[];
-}
-
-/**
- * Options for the resolver.
- */
-export interface ResolveOptions {
-  /** Git ref to resolve (branch, tag, or SHA). Defaults to HEAD. */
-  ref?: string;
-  /** Specific skill path within the repo */
-  skillPath?: string;
-}

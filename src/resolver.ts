@@ -2,7 +2,7 @@ import { simpleGit } from "simple-git";
 import { mkdtemp, readdir, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { basename, join, relative, sep } from "node:path";
-import type { ResolvedSkill, ResolveOptions } from "./types.js";
+import type { ResolvedSkill } from "./types.js";
 
 /**
  * Expand a source to a full Git URL.
@@ -25,20 +25,12 @@ export function expandSource(source: string): string {
  * Clone a source repo to a temporary directory.
  * Returns the path to the cloned repo.
  */
-export async function resolveRepo(
-  source: string,
-  options?: ResolveOptions
-): Promise<string> {
+export async function resolveRepo(source: string): Promise<string> {
   const url = expandSource(source);
   const dir = await mkdtemp(join(tmpdir(), "skills-lock-"));
   const git = simpleGit();
 
-  const cloneArgs = ["--depth", "1"];
-  if (options?.ref) {
-    cloneArgs.push("--branch", options.ref);
-  }
-
-  await git.clone(url, dir, cloneArgs);
+  await git.clone(url, dir, ["--depth", "1"]);
   return dir;
 }
 

@@ -127,20 +127,6 @@ describe("resolveRepo", () => {
     const sha = await resolveRef(clonedDir);
     expect(sha).toMatch(/^[0-9a-f]{40}$/);
   });
-
-  it("clones with a specific ref", async () => {
-    // Create a branch in the source repo
-    const git = simpleGit(sourceDir);
-    await git.checkoutLocalBranch("test-branch");
-    await writeFile(join(sourceDir, "branch-file.txt"), "on branch\n");
-    await git.add("branch-file.txt");
-    await git.commit("branch commit");
-
-    clonedDir = await resolveRepo(sourceDir, { ref: "test-branch" });
-    const clonedGit = simpleGit(clonedDir);
-    const log = await clonedGit.log({ maxCount: 1 });
-    expect(log.latest?.message).toBe("branch commit");
-  });
 });
 
 describe("findSkills", () => {

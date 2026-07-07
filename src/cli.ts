@@ -5,7 +5,6 @@ import { readLockfile, writeLockfile } from "./lockfile.js";
 import { resolveRepo, resolveRef, expandSource, cleanupClone, findSkills } from "./resolver.js";
 import { installSkill, removeSkill, computeSkillHash, writeSkillMetadata } from "./installer.js";
 import { scanInstalledSkills } from "./scanner.js";
-import type { Lockfile } from "./types.js";
 
 const require = createRequire(import.meta.url);
 const { version } = require("../package.json");
@@ -175,78 +174,6 @@ program
   }));
 
 program
-  .command("remove <skill-name>")
-  .description("Remove a skill and delete it from skills.lock")
-  .action(action(async (skillName: string) => {
-    const lockfile = await readLockfile();
-
-    if (lockfile && lockfile.skills[skillName]) {
-      delete lockfile.skills[skillName];
-      await writeLockfile(lockfile);
-    }
-
-    await removeSkill(skillName);
-    console.log(`Removed ${skillName}`);
-  }));
-
-program
-  .command("update [skill-name]")
-  .description("Update skills to latest versions from source repos")
-  .action(action(async (skillName?: string) => {
-    const lockfile = await readLockfile();
-    if (!lockfile) die("No skills.lock found. Run 'skills-lock add' to start.");
-
-    if (skillName && !lockfile.skills[skillName]) {
-      die(`Skill '${skillName}' not found in skills.lock`);
-    }
-
-    const toUpdate = skillName
-      ? { [skillName]: lockfile.skills[skillName] }
-      : lockfile.skills;
-
-    let updatedCount = 0;
-
-    for (const [name, entry] of Object.entries(toUpdate)) {
-      console.log(`Checking ${name}...`);
-
-      const repoDir = await resolveRepo(entry.source);
-      let latestRef: string;
-      try {
-        latestRef = await resolveRef(repoDir);
-      } finally {
-        await cleanupClone(repoDir);
-      }
-
-      if (latestRef === entry.ref) {
-        console.log(`  ${name} — already up to date`);
-        continue;
-      }
-
-      console.log(`  ${name} — ${entry.ref.slice(0, 7)} → ${latestRef.slice(0, 7)}`);
-
-      // Reinstall at the latest ref
-      await removeSkill(name);
-      await installSkill(entry.source, name, latestRef, entry.path);
-
-      const skillDir = join(".agents", "skills", name);
-      const integrity = await computeSkillHash(skillDir);
-      await writeSkillMetadata(skillDir, latestRef, integrity);
-
-      lockfile.skills[name] = { ...entry, ref: latestRef, integrity };
-
-      // Write after each successful update so partial runs are safe
-      await writeLockfile(lockfile);
-      updatedCount++;
-    }
-
-    if (updatedCount === 0) {
-      console.log(Object.keys(toUpdate).length === 0 ? "No skills to update." : "Everything up to date.");
-    } else {
-      console.log(`Updated ${updatedCount} skill(s).`);
-    }
-  }));
-
-program
   .command("check")
   .description("Compare installed skills against skills.lock, including refs and file integrity")
   .action(action(async () => {
@@ -325,7 +252,7 @@ program
     }
 
     if (extra.length > 0) {
-      console.log("Extra (installed but not in lockfile — run 'skills-lock remove <name>' to remove):");
+      console.log("Extra (installed but not in lockfile — pin with 'skills-lock add' or uninstall with 'npx skills remove'):");
       for (const name of extra) console.log(`  - ${name}`);
     }
 

@@ -102,27 +102,6 @@ describe("add", () => {
   });
 });
 
-describe("update", () => {
-  it("prints 'No skills to update.' when lockfile has no skills", async () => {
-    await writeFile(
-      join(tmpDir, "skills.lock"),
-      JSON.stringify({ version: 1, skills: {} }) + "\n"
-    );
-
-    const { stdout, exitCode } = await runCli(["update"], tmpDir);
-
-    expect(exitCode).toBe(0);
-    expect(stdout).toContain("No skills to update.");
-  });
-
-  it("fails with a clear error when skills.lock does not exist", async () => {
-    const { exitCode, stderr } = await runCli(["update"], tmpDir);
-
-    expect(exitCode).toBe(1);
-    expect(stderr).toContain("No skills.lock found");
-  });
-});
-
 describe("install", () => {
   it("fails with a clear error when skills.lock does not exist", async () => {
     const { exitCode, stderr } = await runCli(["install"], tmpDir);
@@ -275,13 +254,17 @@ describe("check", () => {
   });
 });
 
-describe("init", () => {
-  it("is not a recognised command", async () => {
-    const { exitCode, stderr, stdout } = await runCli(["init"], tmpDir);
+describe("commands outside the reproducibility core", () => {
+  // Lifecycle commands are upstream's job (npx skills) — skills-lock only
+  // pins (add), restores (install), and verifies (check).
+  for (const command of ["init", "update", "remove"]) {
+    it(`${command} is not a recognised command`, async () => {
+      const { exitCode, stderr, stdout } = await runCli([command], tmpDir);
 
-    expect(exitCode).not.toBe(0);
-    expect(stderr + stdout).toMatch(/unknown command/i);
-  });
+      expect(exitCode).not.toBe(0);
+      expect(stderr + stdout).toMatch(/unknown command/i);
+    });
+  }
 });
 
 describe("skills CLI not available", () => {
@@ -309,23 +292,6 @@ describe("skills CLI not available", () => {
 
     const { exitCode, stderr } = await runCli(
       ["install", "--force"],
-      tmpDir,
-      fakeEnv
-    );
-
-    expect(exitCode).toBe(1);
-    expect(stderr).toContain("skills");
-    expect(stderr).toContain("npm install");
-  });
-
-  it("remove gives a clear error", async () => {
-    await writeFile(
-      join(tmpDir, "skills.lock"),
-      JSON.stringify({ version: 1, skills: {} }) + "\n"
-    );
-
-    const { exitCode, stderr } = await runCli(
-      ["remove", "pdf"],
       tmpDir,
       fakeEnv
     );

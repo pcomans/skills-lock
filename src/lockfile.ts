@@ -1,5 +1,5 @@
 import { readFile, writeFile } from "node:fs/promises";
-import type { Lockfile, LockfileDiff } from "./types.js";
+import type { Lockfile } from "./types.js";
 
 const LOCKFILE_PATH = "skills.lock";
 
@@ -99,26 +99,4 @@ export function validateLockfile(data: unknown): asserts data is Lockfile {
       }
     }
   }
-}
-
-/**
- * Compute the diff between two lockfile states.
- */
-export function diffLockfiles(
-  oldLock: Lockfile,
-  newLock: Lockfile
-): LockfileDiff {
-  const oldNames = new Set(Object.keys(oldLock.skills));
-  const newNames = new Set(Object.keys(newLock.skills));
-
-  const added = [...newNames].filter((n) => !oldNames.has(n));
-  const removed = [...oldNames].filter((n) => !newNames.has(n));
-  const changed = [...newNames].filter((n) => {
-    if (!oldNames.has(n)) return false;
-    const o = oldLock.skills[n];
-    const nw = newLock.skills[n];
-    return o.ref !== nw.ref || o.integrity !== nw.integrity;
-  });
-
-  return { added, removed, changed };
 }

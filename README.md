@@ -16,7 +16,17 @@ npx skills-lock install
 
 Missing skills are installed at the exact commit SHAs from the lockfile. Skills already on disk are verified against the locked ref and file integrity — drifted skills are reinstalled automatically. Use `--force` to reinstall everything unconditionally.
 
-[`npx skills`](https://skills.sh/) has no `--ref` flag, no lockfile, and no way to pin. `skills-lock` adds a committed `skills.lock` file that records the Git commit SHA for each skill, similar to how `package-lock.json` works for npm.
+[`npx skills`](https://skills.sh/) has no `--ref` flag and no way to install skills at pinned commits. `skills-lock` adds a committed `skills.lock` file that records the Git commit SHA for each skill, similar to how `package-lock.json` works for npm.
+
+`skills-lock` deliberately adds **only** what reproducible installs require — three commands:
+
+| Command | Purpose |
+|---------|---------|
+| `add` | Pin: install a skill and record its exact commit SHA |
+| `install` | Restore: install everything from `skills.lock` at the pinned SHAs |
+| `check` | Verify: detect drift between disk and lockfile (for CI) |
+
+Everything else — listing, searching, updating, removing skills — stays with `npx skills`, which already does it well.
 
 ## Quick start
 
@@ -119,42 +129,6 @@ npx skills-lock install --force
 
 Fails with an error if `skills.lock` does not exist.
 
-### remove
-
-Removes a skill from disk (via `npx skills remove`) and deletes its entry from `skills.lock`.
-
-```
-npx skills-lock remove <name>
-```
-
-Safe to run even if the skill is not in the lockfile -- it still removes from disk.
-
-### update
-
-Checks source repos for newer commits. If a skill has new commits upstream, reinstalls it at the latest ref and updates `skills.lock`.
-
-Update a single skill:
-
-```
-npx skills-lock update pdf
-```
-
-Update all skills:
-
-```
-npx skills-lock update
-```
-
-Example output:
-
-```
-Checking pdf...
-  pdf — a1b2c3d → f4e5d6c
-Checking xlsx...
-  xlsx — already up to date
-Updated 1 skill(s).
-```
-
 ### check
 
 Compares installed skills against `skills.lock` across three dimensions: presence, ref, and file integrity.
@@ -174,7 +148,7 @@ Modified on disk (run 'skills-lock install' to restore):
   - frontend-design
 Unverified (installed outside skills-lock — run 'skills-lock install' to pin):
   - xlsx
-Extra (installed but not in lockfile — run 'skills-lock remove <name>' to remove):
+Extra (installed but not in lockfile — pin with 'skills-lock add' or uninstall with 'npx skills remove'):
   - my-custom-skill
 ```
 
@@ -183,6 +157,24 @@ Exit code 0 if everything is verified, exit code 1 if there are any differences.
 ```
 npx skills-lock check || echo "Skills out of sync -- run npx skills-lock install"
 ```
+
+## Updating and removing skills
+
+`skills-lock` has no `update` or `remove` command on purpose — lifecycle management belongs to `npx skills`.
+
+**To update a skill to the latest commit**, re-pin it:
+
+```bash
+npx skills-lock add anthropics/skills --skill pdf --force
+```
+
+**To remove a skill**, uninstall it with the upstream CLI and delete its entry from `skills.lock`:
+
+```bash
+npx skills remove --skill pdf --yes
+```
+
+`skills-lock check` will flag any mismatch between disk and lockfile either way.
 
 ## Lockfile format
 
@@ -214,7 +206,7 @@ npx skills-lock check || echo "Skills out of sync -- run npx skills-lock install
 | `source` | Full Git URL. GitHub shorthand (e.g. `anthropics/skills`) is expanded at lock time. |
 | `path` | Path within the source repo to the skill directory (the one containing `SKILL.md`). |
 | `ref` | Full 40-character lowercase hex commit SHA. Tags, branch names, and short SHAs are rejected. |
-| `integrity` | SHA-256 hash of the skill directory contents at the pinned ref (`sha256:<64 hex chars>`). Written at `add`/`update` time. Used by `check` and `install` to detect file edits and ref drift. |
+| `integrity` | SHA-256 hash of the skill directory contents at the pinned ref (`sha256:<64 hex chars>`). Written at `add` time. Used by `check` and `install` to detect file edits and ref drift. |
 
 The file ends with a trailing newline.
 
@@ -222,7 +214,7 @@ The file ends with a trailing newline.
 
 Refs in `skills.lock` must be full 40-character commit SHAs. Tags, branch names, and short SHAs are rejected. GitHub shorthand is expanded to full URLs at lock time so the lockfile is unambiguous about where code comes from.
 
-The `integrity` field is a SHA-256 hash of the installed skill directory contents, computed at `add`/`update` time and stored in `skills.lock`. `install` recomputes the hash after each install and fails if it doesn't match. `check` recomputes the hash from actual disk files and compares it against `skills.lock` — it does not trust local metadata, so tampered files are always detected.
+The `integrity` field is a SHA-256 hash of the installed skill directory contents, computed at `add` time and stored in `skills.lock`. `install` recomputes the hash after each install and fails if it doesn't match. `check` recomputes the hash from actual disk files and compares it against `skills.lock` — it does not trust local metadata, so tampered files are always detected.
 
 ## How it works
 
