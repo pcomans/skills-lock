@@ -1,9 +1,16 @@
 import { vi } from "vitest";
-import { mkdir, writeFile, rm } from "node:fs/promises";
+import { mkdir, readdir, writeFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { simpleGit } from "simple-git";
-import { expandSource, resolveRepo, resolveRef, findSkills } from "../src/resolver.js";
+import { expandSource, resolveRepo, resolveRef, findSkills, cloneAtRef } from "../src/resolver.js";
+
+// Helper: list mkdtemp-created clone dirs (skills-lock-XXXXXX) in the OS temp
+// dir, excluding this suite's own skills-lock-test-* repos.
+async function listCloneTempDirs(): Promise<string[]> {
+  const entries = await readdir(tmpdir());
+  return entries.filter((e) => /^skills-lock-[^-]+$/.test(e)).sort();
+}
 
 // Helper: create a temp directory with a real git repo
 async function createTempGitRepo(): Promise<string> {
@@ -126,6 +133,49 @@ describe("resolveRepo", () => {
     // Verify it is a valid git repo with a commit
     const sha = await resolveRef(clonedDir);
     expect(sha).toMatch(/^[0-9a-f]{40}$/);
+  });
+
+  it("cleans up the temp dir when the clone fails", async () => {
+    const before = await listCloneTempDirs();
+
+    await expect(
+      resolveRepo("/nonexistent/skills-lock-no-such-repo")
+    ).rejects.toThrow();
+
+    expect(await listCloneTempDirs()).toEqual(before);
+  });
+});
+
+describe("cloneAtRef", () => {
+  let sourceDir: string;
+
+  beforeEach(async () => {
+    sourceDir = await createTempGitRepo();
+  });
+
+  afterEach(async () => {
+    await cleanupDir(sourceDir);
+  });
+
+  it("cleans up the temp dir when the clone fails", async () => {
+    const before = await listCloneTempDirs();
+
+    await expect(
+      cloneAtRef("/nonexistent/skills-lock-no-such-repo", "a".repeat(40))
+    ).rejects.toThrow();
+
+    expect(await listCloneTempDirs()).toEqual(before);
+  });
+
+  it("cleans up the temp dir when the checkout fails", async () => {
+    const before = await listCloneTempDirs();
+
+    // Valid repo, but the ref does not exist in it
+    await expect(
+      cloneAtRef(sourceDir, "f".repeat(40))
+    ).rejects.toThrow();
+
+    expect(await listCloneTempDirs()).toEqual(before);
   });
 });
 

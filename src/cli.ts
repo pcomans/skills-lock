@@ -72,7 +72,12 @@ program
         } else if (meta.ref !== entry.ref) {
           console.log(`  ${name} — reinstalling (wrong ref: have ${meta.ref.slice(0, 7)}, want ${entry.ref.slice(0, 7)})...`);
           await removeSkill(name);
-        } else if (entry.integrity && meta.integrity !== entry.integrity) {
+        } else if (
+          entry.integrity &&
+          // Hash the actual files, like `check` does — stored metadata can be
+          // stale when files were edited directly on disk.
+          (await computeSkillHash(installedSkill.diskPath)) !== entry.integrity
+        ) {
           console.log(`  ${name} — reinstalling (files modified on disk)...`);
           await removeSkill(name);
         } else {

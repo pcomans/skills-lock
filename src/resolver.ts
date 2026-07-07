@@ -28,9 +28,13 @@ export function expandSource(source: string): string {
 export async function resolveRepo(source: string): Promise<string> {
   const url = expandSource(source);
   const dir = await mkdtemp(join(tmpdir(), "skills-lock-"));
-  const git = simpleGit();
 
-  await git.clone(url, dir, ["--depth", "1"]);
+  try {
+    await simpleGit().clone(url, dir, ["--depth", "1"]);
+  } catch (err) {
+    await cleanupClone(dir);
+    throw err;
+  }
   return dir;
 }
 
@@ -45,11 +49,14 @@ export async function cloneAtRef(
 ): Promise<string> {
   const url = expandSource(source);
   const dir = await mkdtemp(join(tmpdir(), "skills-lock-"));
-  const git = simpleGit();
 
-  await git.clone(url, dir);
-  const repoGit = simpleGit(dir);
-  await repoGit.checkout(ref);
+  try {
+    await simpleGit().clone(url, dir);
+    await simpleGit(dir).checkout(ref);
+  } catch (err) {
+    await cleanupClone(dir);
+    throw err;
+  }
   return dir;
 }
 

@@ -10,6 +10,7 @@ import { mkdtemp, writeFile, readFile, rm, chmod } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { execa } from "execa";
+import { computeSkillHash } from "../src/installer.js";
 
 const CLI = resolve("dist/cli.js");
 
@@ -122,8 +123,14 @@ describe("install", () => {
     expect(stdout).toContain("No skills in lockfile");
   });
 
-  it("reports 'All skills verified.' when metadata matches lockfile", async () => {
-    const integrity = `sha256:${"a".repeat(64)}`;
+  it("reports 'All skills verified.' when disk content matches lockfile", async () => {
+    // Create the skill dir first — the lockfile integrity must be the real
+    // hash of the files, since install verifies actual disk content.
+    const skillDir = join(tmpDir, ".agents", "skills", "pdf");
+    await execa("mkdir", ["-p", skillDir]);
+    await writeFile(join(skillDir, "SKILL.md"), "# PDF");
+    const integrity = await computeSkillHash(skillDir);
+    await writeFile(join(skillDir, ".skills-lock"), JSON.stringify({ ref: SHA_A, integrity }) + "\n");
     await writeFile(
       join(tmpDir, "skills.lock"),
       JSON.stringify({
@@ -133,16 +140,44 @@ describe("install", () => {
         },
       }) + "\n"
     );
-    // Create the skill dir with matching metadata
-    const skillDir = join(tmpDir, ".agents", "skills", "pdf");
-    await execa("mkdir", ["-p", skillDir]);
-    await writeFile(join(skillDir, "SKILL.md"), "# PDF");
-    await writeFile(join(skillDir, ".skills-lock"), JSON.stringify({ ref: SHA_A, integrity }) + "\n");
 
     const { stdout, exitCode } = await runCli(["install"], tmpDir);
 
     expect(exitCode).toBe(0);
     expect(stdout).toContain("All skills verified.");
+  });
+
+  it("detects files tampered on disk even when stored metadata still matches the lockfile", async () => {
+    // Regression: install's fast path used to trust the .skills-lock
+    // metadata hash instead of rehashing disk content, so edits that left
+    // metadata untouched were reported as "already installed".
+    const skillDir = join(tmpDir, ".agents", "skills", "pdf");
+    await execa("mkdir", ["-p", skillDir]);
+    await writeFile(join(skillDir, "SKILL.md"), "# PDF");
+    const integrity = await computeSkillHash(skillDir);
+    await writeFile(join(skillDir, ".skills-lock"), JSON.stringify({ ref: SHA_A, integrity }) + "\n");
+    await writeFile(
+      join(tmpDir, "skills.lock"),
+      JSON.stringify({
+        version: 1,
+        skills: {
+          pdf: { source: "https://github.com/anthropics/skills.git", path: "skills/pdf", ref: SHA_A, integrity },
+        },
+      }) + "\n"
+    );
+
+    // Tamper with the file WITHOUT touching the metadata
+    await writeFile(join(skillDir, "SKILL.md"), "# PDF\nTAMPERED");
+
+    // Block npx skills so the triggered reinstall fails fast instead of
+    // hitting the network — the reinstall decision is what we assert on.
+    const binDir = await makeFakeNpxDir(tmpDir);
+    const { stdout, exitCode } = await runCli(["install"], tmpDir, {
+      PATH: `${binDir}:${process.env.PATH}`,
+    });
+
+    expect(stdout).toContain("reinstalling (files modified on disk)");
+    expect(exitCode).toBe(1);
   });
 });
 

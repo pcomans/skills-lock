@@ -85,7 +85,7 @@ Record for every case: pass/fail, actual output on failure, OS, and Node version
 ### 1.8 Nonexistent repository
 1. Run `skills-lock add anthropics/this-repo-does-not-exist-xyz --skill pdf`
 
-**Expected:** clean one-line error (git clone failure surfaced as `Error: ...`), no raw stack trace, exit code 1.
+**Expected:** clean error — the raw git clone failure prefixed with `Error:` (git's message may span multiple lines) — with no JavaScript stack trace, exit code 1, and no leftover `skills-lock-*` directories in the OS temp dir.
 
 ---
 
@@ -183,7 +183,7 @@ Each case: create `skills.lock` with the given content, run `skills-lock install
 
 | # | Content | Expected error contains |
 |---|---------|------------------------|
-| 4.1 | `not valid json {{{` | JSON parse error |
+| 4.1 | `not valid json {{{` | Node's native JSON parse error (e.g. `is not valid JSON`), surfaced cleanly with no stack trace |
 | 4.2 | `{"version": 99, "skills": {}}` | `Unsupported lockfile version: 99` |
 | 4.3 | valid entry but `ref` is a branch name (`"main"`) | `must be a full 40-character commit SHA` |
 | 4.4 | valid entry but `ref` is a short SHA (7 chars) | `must be a full 40-character commit SHA` |
@@ -230,7 +230,7 @@ Documented replacement workflows (verify they actually work end to end):
 ## 7. Cross-platform / cross-agent spot checks
 
 - **7.1** Repeat 1.1 and 2.1 on macOS and Linux. (Windows is currently untested/unsupported — note results if attempted.)
-- **7.2** After install, verify agent symlinks work: `.claude/skills/<name>` is a symlink pointing at `.agents/skills/<name>` (created by upstream `npx skills`), and `check`/`install` still verify correctly through it.
+- **7.2** After install, verify agent symlinks work: `.claude/skills/<name>` is a symlink pointing at `.agents/skills/<name>` (created by upstream `npx skills`), and `check`/`install` still verify correctly through it. **Precondition:** upstream only creates a per-agent symlink when that agent's marker directory (e.g. `.claude/`) already exists in the project — create an empty `.claude/` directory before running `add`.
 - **7.3** Run `skills-lock install` twice in a row and diff `skills.lock` before/after — the file must be byte-identical (deterministic output, sorted keys, trailing newline).
 
 ---
